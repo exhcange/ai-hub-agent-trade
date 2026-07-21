@@ -1,0 +1,24 @@
+{
+  "name": "@ai-hub/agent-trade-mcp",
+  "version": "0.1.0",
+  "description": "Local stdio MCP server for AI Hub spot trading tools",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ai-hub-trade-mcp": "./dist/index.js"
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean --target node20",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@ai-hub/agent-trade-core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.26.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@ai-hub/agent-trade-cli",
+  "version": "0.1.0",
+  "description": "Local spot trading command-line tools for AI Hub",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "ai-hub": "./dist/index.js"
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean --target node20",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@ai-hub/agent-trade-core": "workspace:*"
+  }
+}
