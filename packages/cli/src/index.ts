@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { AiHubError, AiHubSpotApi, ConfigStore, CredentialStore, configFilePath } from "@ai-hub/agent-trade-core";
+import { createInterface } from "node:readline/promises";
+import { AiHubError, ConfigStore, configFilePath, createToolExecutionContext, createToolRegistry, toAiHubErrorPayload, ToolWriteExecutor, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 function printHelp(): void {
   process.stdout.write(`AI Hub Agent Trade CLI
@@ -10,10 +11,16 @@ Usage:
   ai-hub config set-credentials --profile <name>
   ai-hub config show [--profile <name>]
   ai-hub config remove --profile <name>
-  ai-hub market <time|symbols|ticker|depth|trades|klines> [options]
-  ai-hub account get [--profile <name>]
+  ai-hub market <ping|time|symbols|ticker|depth|trades|klines> [options]
+  ai-hub account <get|transfer|transfer-history> [options]
+  ai-hub spot order <test|get|open|fills|place|cancel|batch-place|batch-cancel> [options]
+  ai-hub margin order <get|open|fills|place|cancel> [options]
+  ai-hub wallet <transfer|transfer-history|deposit-history|deposit-address|withdraw-address|transferable-assets|exchange-account|withdraw|withdraw-history> [options]
+  ai-hub sub-account <list|create|set-trading-status|assets|root-transfer|root-transfer-history|internal-transfer|internal-transfer-history|transfer-to-parent|parent-transfer-history> [options]
+  ai-hub sub-account api-key <list|set-ip|delete> [options]
 
-Credentials are prompted interactively and stored only in the operating-system credential manager.
+Credentials are prompted interactively and saved as plaintext in ~/.ai-hub/config.toml (mode 600).
+Array arguments such as --orders and --order-ids use a JSON array value.
 `);
 }
 
@@ -69,45 +76,76 @@ async function readHidden(prompt: string): Promise<string> {
   });
 }
 
-async function runMarket(args: string[], profileName: string | undefined): Promise<void> {
-  const action = args[1];
-  const profile = await new ConfigStore().showProfile(profileName);
-  const api = new AiHubSpotApi(profile.openApiBaseUrl);
-  switch (action) {
-    case "time": json(await api.time()); return;
-    case "symbols": json(await api.symbols()); return;
-    case "ticker": json(await api.ticker({ symbol: optionValue(args, "--symbol"), symbols: optionValue(args, "--symbols"), timeZone: optionValue(args, "--time-zone") })); return;
-    case "depth": {
-      const symbol = optionValue(args, "--symbol");
-      if (!symbol) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "market depth requires --symbol.");
-      json(await api.depth(symbol, Number(optionValue(args, "--limit") ?? 20)));
-      return;
-    }
-    case "trades": {
-      const symbol = optionValue(args, "--symbol");
-      if (!symbol) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "market trades requires --symbol.");
-      json(await api.trades(symbol, Number(optionValue(args, "--limit") ?? 100)));
-      return;
-    }
-    case "klines": {
-      const symbol = optionValue(args, "--symbol");
-      const interval = optionValue(args, "--interval");
-      if (!symbol || !interval) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "market klines requires --symbol and --interval.");
-      json(await api.klines({ symbol, interval, limit: Number(optionValue(args, "--limit") ?? 100), timezone: optionValue(args, "--time-zone") }));
-      return;
-    }
-    default:
-      throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", "Use one of: time, symbols, ticker, depth, trades, klines.");
+async function approveWrite(preview: unknown): Promise<string | undefined> {
+  json({
+    preview,
+    executed: false,
+    requiresNewUserConfirmation: true,
+    message: "This request is only a preview. A person must review it and enter yes as a new terminal response to execute."
+  });
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "State-changing commands require an interactive terminal and a new manual yes response after the preview.");
   }
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await readline.question("Type yes to execute: ");
+  readline.close();
+  return answer.trim().toLowerCase() === "yes" ? answer.trim() : undefined;
 }
 
-async function runAccount(args: string[], profileName: string | undefined): Promise<void> {
-  if (args[1] !== "get") throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", "Use: ai-hub account get.");
-  const config = new ConfigStore();
-  const profile = await config.showProfile(profileName);
-  const credentials = await new CredentialStore().get(profile.name);
-  if (!credentials) throw new AiHubError("AI_HUB_CREDENTIAL_NOT_CONFIGURED", `Credentials are not configured for profile "${profile.name}".`);
-  json(await new AiHubSpotApi(profile.openApiBaseUrl).account(credentials));
+function camelCase(value: string): string {
+  return value.replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase());
+}
+
+function parseToolInput(tool: ToolSpec, args: string[]): Record<string, unknown> {
+  const properties = tool.inputSchema.properties ?? {};
+  const input: Record<string, unknown> = {};
+  for (let index = 0; index < args.length; index += 1) {
+    const option = args[index];
+    if (!option?.startsWith("--")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `Unexpected argument "${option}".`);
+    const camelKey = camelCase(option.slice(2));
+    const key = properties[camelKey] ? camelKey : camelKey === "timeZone" && properties.timezone ? "timezone" : camelKey;
+    const value = args[index + 1];
+    if (!value || value.startsWith("--")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${option} requires a value.`);
+    index += 1;
+    const property = properties[key] as { type?: string } | undefined;
+    if (!property) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `Unknown argument "${option}" for ${tool.cliPath.join(" ")}.`);
+    if (property.type === "integer") {
+      input[key] = Number(value);
+    } else if (property.type === "boolean") {
+      if (!["true", "false", "1", "0"].includes(value)) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${option} must be true, false, 1, or 0.`);
+      input[key] = value === "true" || value === "1";
+    } else if (property.type === "array") {
+      try { input[key] = JSON.parse(value); } catch { throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${option} must be a JSON array.`); }
+    } else {
+      input[key] = value;
+    }
+  }
+  return input;
+}
+
+function findTool(args: string[]): ToolSpec | undefined {
+  const registry = createToolRegistry();
+  return registry.list().sort((left, right) => right.cliPath.length - left.cliPath.length).find((tool) => tool.cliPath.every((part, index) => args[index] === part));
+}
+
+async function runTool(args: string[], profileName: string | undefined): Promise<void> {
+  if (args.includes("--confirm")) {
+    throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "--confirm is not supported. Review the preview, then provide a new manual yes response in an interactive terminal.");
+  }
+  const registry = createToolRegistry();
+  const tool = findTool(args);
+  if (!tool) throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", "Unknown API command. Run ai-hub --help for available command groups.");
+  const input = parseToolInput(tool, args.slice(tool.cliPath.length));
+  const context = await createToolExecutionContext(profileName);
+  if (tool.operation === "read") {
+    json(await registry.execute(tool.name, input, context));
+    return;
+  }
+  const executor = new ToolWriteExecutor(registry);
+  const prepared = executor.prepare(tool.name, input, context);
+  const userConfirmation = await approveWrite({ action: prepared.action, summary: prepared.summary, requestHash: prepared.requestHash, expiresAt: prepared.expiresAt });
+  if (!userConfirmation) return;
+  json(await executor.confirm(prepared.confirmationId, userConfirmation, context));
 }
 
 export async function run(argv: string[]): Promise<void> {
@@ -116,12 +154,11 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
   const profile = optionValue(argv, "--profile");
+  const commandArgs = profile ? argv.filter((value, index) => value !== "--profile" && index !== argv.indexOf("--profile") + 1) : argv;
 
-  if (argv[0] === "market") return runMarket(argv, profile);
-  if (argv[0] === "account") return runAccount(argv, profile);
-  if (argv[0] !== "config") throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", `Unknown command "${argv[0]}". Run "ai-hub --help".`);
+  if (commandArgs[0] !== "config") return runTool(commandArgs, profile);
 
-  const action = argv[1];
+  const action = commandArgs[1];
   const store = new ConfigStore();
 
   switch (action) {
@@ -141,20 +178,18 @@ export async function run(argv: string[]): Promise<void> {
       await store.showProfile(profile);
       const apiKey = await readHidden("API key: ");
       const secretKey = await readHidden("Secret key: ");
-      const stored = await new CredentialStore().set(profile, { apiKey, secretKey });
-      const resolved = await store.setCredentialRef(profile, stored.credentialRef);
-      json({ profile: resolved.name, credentialConfigured: true, credentialVersion: stored.credentialVersion });
+      const resolved = await store.setCredentials(profile, { apiKey, secretKey });
+      json({ profile: resolved.name, credentialConfigured: true, configVersion: resolved.configVersion });
       return;
     }
     case "show": {
       const resolved = await store.showProfile(profile);
-      json({ ...resolved, credentialConfigured: Boolean(resolved.credentialRef), configPath: configFilePath() });
+      json({ ...resolved, credentialConfigured: Boolean(await store.getCredentials(profile)), configPath: configFilePath() });
       return;
     }
     case "remove":
       if (!profile) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "config remove requires --profile.");
       await store.showProfile(profile);
-      await new CredentialStore().remove(profile);
       await store.removeProfile(profile);
       json({ removed: profile });
       return;
@@ -164,9 +199,7 @@ export async function run(argv: string[]): Promise<void> {
 }
 
 run(process.argv.slice(2)).catch((error: unknown) => {
-  const payload = error instanceof AiHubError
-    ? { code: error.code, message: error.message }
-    : { code: "AI_HUB_UNEXPECTED_ERROR", message: error instanceof Error ? error.message : "Unexpected error" };
+  const payload = toAiHubErrorPayload(error);
   process.stderr.write(`${JSON.stringify(payload)}\n`);
   process.exitCode = 1;
 });

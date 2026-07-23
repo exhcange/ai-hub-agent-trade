@@ -1,131 +1,109 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
-import { AiHubError, AiHubSpotApi, CredentialStore, type ResolvedProfile } from "@ai-hub/agent-trade-core";
+import { AiHubError, createToolExecutionContext, createToolRegistry, toAiHubErrorPayload, ToolWriteExecutor, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 const CAPABILITIES_TOOL = "system_get_capabilities";
+const CONFIRM_ACTION_TOOL = "confirm_action";
 
 function result(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
-const READ_TOOLS: Tool[] = [
-  {
-    name: "market_get_server_time",
-    description: "Get server time from the configured tenant OpenAPI.",
-    inputSchema: { type: "object", additionalProperties: false },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  },
-  {
-    name: "market_get_symbols",
-    description: "Get spot symbols from the configured tenant OpenAPI.",
-    inputSchema: { type: "object", additionalProperties: false },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  },
-  {
-    name: "market_get_ticker",
-    description: "Get spot ticker data. Pass symbol or symbols when filtering is needed.",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, symbols: { type: "string" }, timeZone: { type: "string" } }, additionalProperties: false },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  },
-  {
-    name: "market_get_depth",
-    description: "Get the spot order book for one symbol.",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "number", minimum: 1, maximum: 100 } }, required: ["symbol"], additionalProperties: false },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  },
-  {
-    name: "market_get_trades",
-    description: "Get recent spot trades for one symbol.",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "number", minimum: 1, maximum: 1000 } }, required: ["symbol"], additionalProperties: false },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  },
-  {
-    name: "spot_get_account",
-    description: "Get the signed account overview for the configured profile. Requires credentials in the local credential manager.",
-    inputSchema: { type: "object", additionalProperties: false },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }
-];
-
-function argumentsOf(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+export function toMcpErrorResult(error: unknown): CallToolResult {
+  const payload = toAiHubErrorPayload(error);
+  return { isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, ...payload }) }] };
 }
 
-function requiredString(args: Record<string, unknown>, name: string): string {
-  const value = args[name];
-  if (typeof value !== "string" || !value.trim()) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${name} is required.`);
-  return value;
-}
-
-function numberOrDefault(args: Record<string, unknown>, name: string, fallback: number): number {
-  const value = args[name];
-  if (value === undefined) return fallback;
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${name} must be a number.`);
-  return value;
-}
-
-function apiFor(profile: ResolvedProfile | undefined): AiHubSpotApi {
-  if (!profile) throw new AiHubError("AI_HUB_PROFILE_NOT_FOUND", "No configured local profile is available.");
-  return new AiHubSpotApi(profile.openApiBaseUrl);
-}
-
-async function callReadTool(name: string, profile: ResolvedProfile | undefined, args: Record<string, unknown>): Promise<unknown> {
-  const api = apiFor(profile);
-  switch (name) {
-    case "market_get_server_time": return api.time();
-    case "market_get_symbols": return api.symbols();
-    case "market_get_ticker": return api.ticker({
-      symbol: typeof args.symbol === "string" ? args.symbol : undefined,
-      symbols: typeof args.symbols === "string" ? args.symbols : undefined,
-      timeZone: typeof args.timeZone === "string" ? args.timeZone : undefined
-    });
-    case "market_get_depth": return api.depth(requiredString(args, "symbol"), numberOrDefault(args, "limit", 20));
-    case "market_get_trades": return api.trades(requiredString(args, "symbol"), numberOrDefault(args, "limit", 100));
-    case "spot_get_account": {
-      if (!profile) throw new AiHubError("AI_HUB_PROFILE_NOT_FOUND", "No configured local profile is available.");
-      const credentials = await new CredentialStore().get(profile.name);
-      if (!credentials) throw new AiHubError("AI_HUB_CREDENTIAL_NOT_CONFIGURED", `Credentials are not configured for profile "${profile.name}".`);
-      return api.account(credentials);
+function toMcpTool(tool: ToolSpec): Tool {
+  return {
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: {
+      readOnlyHint: tool.operation === "read",
+      destructiveHint: tool.riskLevel === "high",
+      idempotentHint: tool.operation === "read",
+      openWorldHint: true
     }
-    default: throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", "This tool is not available in the current server session.");
-  }
+  };
 }
 
-export function createServer(profile: ResolvedProfile | undefined, readOnly: boolean): Server {
+function prepareToolName(tool: ToolSpec): string {
+  const [prefix, ...rest] = tool.name.split("_");
+  return `${prefix ?? "spot"}_prepare_${rest.join("_")}`;
+}
+
+function toPrepareMcpTool(tool: ToolSpec): Tool {
+  return {
+    ...toMcpTool(tool),
+    name: prepareToolName(tool),
+    title: `Prepare ${tool.title}`,
+    description: `Validate and preview this state-changing request. It does not call OpenAPI. Stop after this call and wait for a NEW explicit user confirmation message before calling ${CONFIRM_ACTION_TOOL}.`,
+    annotations: { readOnlyHint: false, destructiveHint: tool.riskLevel === "high", idempotentHint: true, openWorldHint: false }
+  };
+}
+
+/** stdio adapter only: Tool schemas, validation, permissions, and handlers come from Core. */
+export function createServer(profileName: string | undefined, readOnly: boolean): Server {
+  const registry = createToolRegistry();
+  const writeExecutor = new ToolWriteExecutor(registry);
   const server = new Server(
     { name: "ai-hub-agent-trade", version: "0.1.0" },
-    { capabilities: { tools: {} } }
+    {
+      capabilities: { tools: {} },
+      instructions: "For every state-changing action, call only a spot_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message."
+    }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [{
-      name: CAPABILITIES_TOOL,
-      description: "Return the local server capability snapshot without making an OpenAPI request.",
-      inputSchema: { type: "object", additionalProperties: false },
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
-    }, ...READ_TOOLS]
+    tools: [
+      {
+        name: CAPABILITIES_TOOL,
+        title: "Server Capabilities Snapshot",
+        description: "Return the available local profile and Tool Registry capability snapshot.",
+        inputSchema: { type: "object", additionalProperties: false },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+      },
+      ...registry.list({ readOnly }).flatMap((tool) => tool.operation === "write" ? [toPrepareMcpTool(tool)] : [toMcpTool(tool)]),
+      ...(readOnly ? [] : [{
+        name: CONFIRM_ACTION_TOOL,
+        title: "Confirm Prepared Action",
+        description: "Execute one previously prepared state-changing action exactly once, only after a new explicit user confirmation message received after the preview.",
+        inputSchema: { type: "object", properties: { confirmationId: { type: "string" }, userConfirmation: { type: "string", minLength: 1, description: "The new explicit user confirmation message received after the prepare preview. Do not generate or infer this text." } }, required: ["confirmationId", "userConfirmation"], additionalProperties: false },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
+      } satisfies Tool])
+    ]
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
+      const context = await createToolExecutionContext(profileName);
       if (request.params.name === CAPABILITIES_TOOL) {
         return result({
           ok: true,
           data: {
-            profileConfigured: Boolean(profile),
-            profile: profile ? { name: profile.name, host: new URL(profile.openApiBaseUrl).host, configVersion: profile.configVersion } : null,
+            profile: { name: context.profile.name, host: new URL(context.profile.openApiBaseUrl).host, configVersion: context.profile.configVersion },
             readOnly,
-            modules: ["spot-common", "spot-order", "spot-account", "spot-deposit-withdraw", "spot-sub-account"],
-            writeToolsExposed: false
+            capabilities: registry.capabilities(context, { readOnly })
           }
         });
       }
-      return result({ ok: true, data: await callReadTool(request.params.name, profile, argumentsOf(request.params.arguments)) });
+      if (request.params.name === CONFIRM_ACTION_TOOL) {
+        const input = request.params.arguments ?? {};
+        if (typeof input.confirmationId !== "string" || typeof input.userConfirmation !== "string" || !input.userConfirmation.trim()) {
+          throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "confirmationId and a non-empty userConfirmation are required.");
+        }
+        return result({ ok: true, data: await writeExecutor.confirm(input.confirmationId, input.userConfirmation, context) });
+      }
+      const preparedTool = registry.list({ readOnly: false }).find((tool) => tool.operation === "write" && prepareToolName(tool) === request.params.name);
+      if (preparedTool) {
+        return result({ ok: true, data: writeExecutor.prepare(preparedTool.name, request.params.arguments ?? {}, context) });
+      }
+      const data = await registry.execute(request.params.name, request.params.arguments ?? {}, context, { readOnly });
+      return result({ ok: true, data });
     } catch (error) {
-      const payload = error instanceof AiHubError
-        ? { code: error.code, message: error.message }
-        : { code: "AI_HUB_UNEXPECTED_ERROR", message: error instanceof Error ? error.message : "Unexpected error" };
-      return { isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, ...payload }) }] };
+      return toMcpErrorResult(error);
     }
   });
 

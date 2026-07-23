@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Hub Deposits and Withdrawals"
+  short_description: "Manage AI Hub wallet operations"
+  default_prompt: "Use $ai-hub-spot-deposit-withdraw for AI Hub wallet operations."

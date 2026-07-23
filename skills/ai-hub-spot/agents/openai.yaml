@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Hub Spot"
+  short_description: "Route safe AI Hub spot workflows"
+  default_prompt: "Use $ai-hub-spot to route a supported AI Hub spot request."

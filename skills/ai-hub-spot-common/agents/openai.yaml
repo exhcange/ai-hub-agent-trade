@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Hub Spot Common"
+  short_description: "Retrieve AI Hub public market data"
+  default_prompt: "Use $ai-hub-spot-common to retrieve AI Hub spot market data."

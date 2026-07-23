@@ -21,6 +21,9 @@ export interface PreparedAction {
   requestHash: string;
   action: string;
   summary: Record<string, unknown>;
+  /** A host/Agent workflow guard; source provenance must be enforced by the caller. */
+  requiresNewUserConfirmation: true;
+  nextStep: string;
 }
 
 interface PendingAction extends PrepareActionInput {
@@ -56,11 +59,21 @@ export class ConfirmationService {
     const confirmationId = randomUUID();
     const requestHash = hash(input);
     this.actions.set(confirmationId, { ...input, confirmationId, requestHash, expiresAtMs, consumed: false });
-    return { confirmationId, expiresAt: new Date(expiresAtMs).toISOString(), requestHash, action: input.action, summary: input.summary };
+    return {
+      confirmationId,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+      requestHash,
+      action: input.action,
+      summary: input.summary,
+      requiresNewUserConfirmation: true,
+      nextStep: "Stop and wait for a new explicit user confirmation message. Do not call confirm_action from the same user instruction that prepared this request."
+    };
   }
 
-  public confirm(confirmationId: string, confirm: boolean, context: ExecutionContext): { action: string; payload: Record<string, unknown>; requestHash: string } {
-    if (confirm !== true) throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "confirm must be true before a state-changing request can execute.");
+  public confirm(confirmationId: string, userConfirmation: string, context: ExecutionContext): { action: string; payload: Record<string, unknown>; requestHash: string } {
+    if (typeof userConfirmation !== "string" || !userConfirmation.trim()) {
+      throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "A non-empty new explicit user confirmation message is required before a state-changing request can execute.");
+    }
     const pending = this.actions.get(confirmationId);
     if (!pending) throw new AiHubError("AI_HUB_CONFIRMATION_NOT_FOUND", "Confirmation was not found or has already been consumed.");
     if (pending.consumed) throw new AiHubError("AI_HUB_CONFIRMATION_CONSUMED", "Confirmation has already been consumed.");
@@ -69,6 +82,7 @@ export class ConfirmationService {
       throw new AiHubError("AI_HUB_CONFIRMATION_EXPIRED", "Confirmation has expired.");
     }
     if (stableJson(pending.context) !== stableJson(context)) {
+      this.actions.delete(confirmationId);
       throw new AiHubError("AI_HUB_CONFIRMATION_CONTEXT_CHANGED", "Profile, OpenAPI base URL, configuration, or credentials changed after prepare.");
     }
     pending.consumed = true;

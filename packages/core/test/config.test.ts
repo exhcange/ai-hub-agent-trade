@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { ConfigStore, normalizeOpenApiBaseUrl } from "../src/index.js";
 
-test("stores a profile without storing credentials", async () => {
+test("stores plaintext credentials in the selected TOML profile", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ai-hub-config-"));
   const store = new ConfigStore(join(directory, "config.toml"));
 
@@ -13,8 +13,18 @@ test("stores a profile without storing credentials", async () => {
 
   assert.equal(profile.name, "tenant-a");
   assert.equal(profile.openApiBaseUrl, "https://8.8.8.8/openapi");
-  assert.equal(profile.credentialRef, undefined);
   assert.equal(profile.configVersion.length, 64);
+
+  await store.setCredentials("tenant-a", { apiKey: "test-api-key", secretKey: "test-secret-key" });
+  const credentials = await store.getCredentials("tenant-a");
+  const text = await readFile(join(directory, "config.toml"), "utf8");
+  const file = await stat(join(directory, "config.toml"));
+
+  assert.equal(credentials?.apiKey, "test-api-key");
+  assert.equal(credentials?.secretKey, "test-secret-key");
+  assert.match(text, /api_key = "test-api-key"/);
+  assert.match(text, /secret_key = "test-secret-key"/);
+  assert.equal(file.mode & 0o777, 0o600);
 });
 
 test("rejects a local OpenAPI endpoint", async () => {

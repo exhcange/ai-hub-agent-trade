@@ -5,11 +5,13 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { isIP } from "node:net";
 import { parse, stringify } from "smol-toml";
+import { loadStoredCredentials, validateApiCredentials, type ApiCredentials, type LoadedCredentials } from "./credential.js";
 import { AiHubError } from "./errors.js";
 
 export interface TenantProfile {
   openapi_base_url: string;
-  credential_ref?: string;
+  api_key?: string;
+  secret_key?: string;
 }
 
 export interface LocalConfig {
@@ -21,7 +23,6 @@ export interface LocalConfig {
 export interface ResolvedProfile {
   name: string;
   openApiBaseUrl: string;
-  credentialRef?: string;
   configVersion: string;
 }
 
@@ -128,7 +129,11 @@ export class ConfigStore {
     const config = await this.read();
     const normalizedUrl = await normalizeOpenApiBaseUrl(openApiBaseUrl);
     const existing = config.profiles[name];
-    config.profiles[name] = { openapi_base_url: normalizedUrl, ...(existing?.credential_ref ? { credential_ref: existing.credential_ref } : {}) };
+    config.profiles[name] = {
+      openapi_base_url: normalizedUrl,
+      ...(existing?.api_key ? { api_key: existing.api_key } : {}),
+      ...(existing?.secret_key ? { secret_key: existing.secret_key } : {})
+    };
     if (Object.keys(config.profiles).length === 1) config.default_profile = name;
     await this.write(config);
     return this.resolveFrom(config, name);
@@ -137,6 +142,13 @@ export class ConfigStore {
   public async showProfile(requestedName?: string): Promise<ResolvedProfile> {
     const config = await this.read();
     return this.resolveFrom(config, requestedName ?? config.default_profile);
+  }
+
+  public async getCredentials(requestedName?: string): Promise<LoadedCredentials | undefined> {
+    const config = await this.read();
+    const name = requestedName ?? config.default_profile;
+    const profile = this.profileFrom(config, name);
+    return loadStoredCredentials(profile.api_key, profile.secret_key);
   }
 
   public async removeProfile(name: string): Promise<void> {
@@ -148,26 +160,32 @@ export class ConfigStore {
     await this.write(config);
   }
 
-  public async setCredentialRef(name: string, credentialRef: string): Promise<ResolvedProfile> {
+  public async setCredentials(name: string, credentials: ApiCredentials): Promise<ResolvedProfile> {
     validateProfileName(name);
     const config = await this.read();
     const profile = config.profiles[name];
     if (!profile) throw new AiHubError("AI_HUB_PROFILE_NOT_FOUND", `Profile "${name}" does not exist.`);
-    config.profiles[name] = { ...profile, credential_ref: credentialRef };
+    const value = validateApiCredentials(credentials);
+    config.profiles[name] = { openapi_base_url: profile.openapi_base_url, api_key: value.apiKey, secret_key: value.secretKey };
     await this.write(config);
     return this.resolveFrom(config, name);
   }
 
   private resolveFrom(config: LocalConfig, name: string): ResolvedProfile {
     validateProfileName(name);
-    const profile = config.profiles[name];
-    if (!profile) throw new AiHubError("AI_HUB_PROFILE_NOT_FOUND", `Profile "${name}" does not exist.`);
+    const profile = this.profileFrom(config, name);
     return {
       name,
       openApiBaseUrl: profile.openapi_base_url,
-      credentialRef: profile.credential_ref,
       configVersion: versionOf(config, name)
     };
+  }
+
+  private profileFrom(config: LocalConfig, name: string): TenantProfile {
+    validateProfileName(name);
+    const profile = config.profiles[name];
+    if (!profile) throw new AiHubError("AI_HUB_PROFILE_NOT_FOUND", `Profile "${name}" does not exist.`);
+    return profile;
   }
 
   private async write(config: LocalConfig): Promise<void> {

@@ -1,5 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": "dist", "rootDir": "src" },
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": { "@ai-hub/agent-trade-core": ["../core/dist/index.d.ts"] }
+  },
   "include": ["src/**/*.ts"]
 }

@@ -5,12 +5,22 @@ Local CLI, MCP, and Skills for AI Hub spot trading integrations.
 ## Implemented foundation
 
 - SaaS-safe local profiles at `~/.ai-hub/config.toml`.
-- OS credential storage through macOS Keychain, Windows Credential Manager, and Linux Secret Service.
-- Public spot market reads: server time, symbols, ticker, depth, trades, and klines.
-- Signed account overview read.
-- Local stdio MCP tools for the available read capabilities.
+- Plaintext API credentials stored in the local profile at `~/.ai-hub/config.toml`.
+- Public spot market reads: connectivity, server time, symbols, ticker, depth, trades, and klines.
+- Signed account, wallet, sub-account, margin, and transfer read capabilities.
+- Local stdio MCP and CLI tools for single/batch spot orders, v2 margin orders, wallet transfers and withdrawals, and sub-account administration.
+- Shared Tool Registry for MCP and CLI schemas, validation, access controls, error codes, and handlers.
+- One-time spot order preparation and confirmation. Preparation never sends an OpenAPI request.
 
-The first release does not expose state-changing tools until the shared prepare/confirm flow is complete and tested.
+## Required confirmation boundary
+
+For every state-changing operation, the caller must prepare the action, show the exact preview, and stop for a new explicit user confirmation message. Only after that new message may it call `confirm_action` with `confirmationId` and `userConfirmation`.
+
+`confirm_action` is one-time and expires after five minutes. The CLI rejects `--confirm` and requires a new interactive `yes` response after showing the preview. The MCP server and all Skills prohibit chaining prepare and confirm from one user instruction. The local protocol cannot prove who authored a message, so the Agent or host must preserve the new-user-message boundary.
+
+## Command surface
+
+CLI commands are generated from the same Tool Registry as MCP. Use command paths such as `ai-hub margin order get`, `ai-hub wallet deposit-history`, and `ai-hub sub-account api-key list`; use standard kebab-case flags for Tool fields. Array inputs, including batch order `--orders` and batch cancellation `--order-ids`, accept a JSON array string.
 
 ## Development endpoint
 
@@ -22,4 +32,6 @@ The current production OpenAPI endpoint used for read-only smoke tests is `https
 - `@ai-hub/agent-trade-mcp`: local stdio MCP server.
 - `@ai-hub/agent-trade-core`: internal shared workspace package.
 
-No API key or secret key is stored in the repository or in `~/.ai-hub/config.toml`.
+No API key or secret key is stored in the repository. The local configuration directory and file are written with mode `700` and `600` respectively; users must still protect their local machine and avoid sharing `~/.ai-hub/config.toml`.
+
+Profiles created by an earlier Keychain-based build must run `ai-hub config set-credentials --profile <name>` once after upgrading. The CLI does not copy credentials from the operating-system credential manager into the TOML file automatically.

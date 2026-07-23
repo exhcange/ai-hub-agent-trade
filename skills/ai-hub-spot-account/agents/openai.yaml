@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Hub Spot Account"
+  short_description: "Inspect AI Hub account information"
+  default_prompt: "Use $ai-hub-spot-account to inspect an AI Hub account safely."

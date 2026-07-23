@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Hub Spot Orders"
+  short_description: "Manage safe AI Hub spot orders"
+  default_prompt: "Use $ai-hub-spot-order to inspect or safely manage AI Hub spot orders."

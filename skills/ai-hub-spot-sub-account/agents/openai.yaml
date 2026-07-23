@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Hub Spot Sub-accounts"
+  short_description: "Manage AI Hub sub-account operations"
+  default_prompt: "Use $ai-hub-spot-sub-account for supported AI Hub sub-account operations."

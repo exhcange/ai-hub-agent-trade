@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
-import { AiHubError } from "./errors.js";
+import { AiHubError, OpenApiBusinessError } from "./errors.js";
+import { diagnoseOpenApiBusinessError, isOpenApiSuccessCode } from "./openapi-error-catalog.js";
 import type { ApiCredentials } from "./credential.js";
 
 export type QueryValue = string | number | boolean | undefined;
@@ -11,6 +12,23 @@ export interface SpotKlinesParams {
   endTime?: number;
   timezone?: string;
   limit?: number;
+}
+
+export interface SpotPlaceOrderParams {
+  symbol: string;
+  volume: string;
+  side: "BUY" | "SELL";
+  type: "LIMIT" | "MARKET";
+  price?: string;
+  timeInForce?: "GTC" | "IOC" | "FOK";
+  newClientOrderId: string;
+  recvWindow?: string;
+}
+
+export interface SpotCancelOrderParams {
+  symbol: string;
+  orderId: string;
+  newClientOrderId?: string;
 }
 
 export interface ApiClientOptions {
@@ -91,6 +109,10 @@ export class AiHubSpotApi {
     return this.request("GET", "/sapi/v2/time");
   }
 
+  public ping(): Promise<unknown> {
+    return this.request("GET", "/sapi/v2/ping");
+  }
+
   public symbols(): Promise<unknown> {
     return this.request("GET", "/sapi/v2/symbols");
   }
@@ -120,6 +142,51 @@ export class AiHubSpotApi {
 
   public account(credentials: ApiCredentials): Promise<unknown> {
     return this.request("GET", "/sapi/v2/account", {}, undefined, credentials);
+  }
+
+  public getOrder(params: { symbol: string; orderId: string; newClientOrderId?: string }, credentials: ApiCredentials): Promise<unknown> {
+    return this.request("GET", "/sapi/v2/order", params, undefined, credentials);
+  }
+
+  public getOpenOrders(params: { symbol?: string; limit?: number }, credentials: ApiCredentials): Promise<unknown> {
+    return this.request("GET", "/sapi/v2/openOrders", params, undefined, credentials);
+  }
+
+  public getMyTrades(params: { symbol: string; limit?: number; fromId?: string }, credentials: ApiCredentials): Promise<unknown> {
+    return this.request("GET", "/sapi/v2/myTrades", params, undefined, credentials);
+  }
+
+  public placeOrder(params: SpotPlaceOrderParams, credentials: ApiCredentials): Promise<unknown> {
+    const body: Record<string, unknown> = {
+      symbol: params.symbol,
+      volume: params.volume,
+      side: params.side,
+      type: params.type,
+      newClientOrderId: params.newClientOrderId
+    };
+    if (params.price) body.price = params.price;
+    if (params.timeInForce) body.timeInForce = params.timeInForce;
+    if (params.recvWindow) body.recvWindow = params.recvWindow;
+    return this.request("POST", "/sapi/v2/order", {}, body, credentials);
+  }
+
+  public cancelOrder(params: SpotCancelOrderParams, credentials: ApiCredentials): Promise<unknown> {
+    const body: Record<string, unknown> = { symbol: params.symbol, orderId: params.orderId };
+    if (params.newClientOrderId) body.newClientOrderId = params.newClientOrderId;
+    return this.request("POST", "/sapi/v2/cancel", {}, body, credentials);
+  }
+
+  /**
+   * Signed endpoint adapter for Tool Registry entries whose OpenAPI payload is
+   * defined by the API document. Keep endpoint selection in the individual Tool
+   * definition; never expose this method directly through CLI or MCP.
+   */
+  public signedGet(path: string, query: Record<string, QueryValue>, credentials: ApiCredentials): Promise<unknown> {
+    return this.request("GET", path, query, undefined, credentials);
+  }
+
+  public signedPost(path: string, body: Record<string, unknown>, credentials: ApiCredentials): Promise<unknown> {
+    return this.request("POST", path, {}, body, credentials);
   }
 
   private async request(
@@ -164,8 +231,18 @@ export class AiHubSpotApi {
       throw new AiHubError("AI_HUB_OPENAPI_HTTP_ERROR", `OpenAPI returned HTTP ${response.status}.`);
     }
     try {
-      return parseJsonPreservingLargeIntegers<unknown>(raw);
-    } catch {
+      const parsed = parseJsonPreservingLargeIntegers<unknown>(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const payload = parsed as Record<string, unknown>;
+        if (Object.hasOwn(payload, "code") && !isOpenApiSuccessCode(payload.code)) {
+          const upstreamCode = typeof payload.code === "string" || typeof payload.code === "number" ? payload.code : String(payload.code);
+          const upstreamMessage = typeof payload.msg === "string" ? payload.msg : "OpenAPI returned a business failure without a message.";
+          throw new OpenApiBusinessError(diagnoseOpenApiBusinessError(path, upstreamCode, upstreamMessage));
+        }
+      }
+      return parsed;
+    } catch (error) {
+      if (error instanceof OpenApiBusinessError) throw error;
       throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "OpenAPI returned a non-JSON response.");
     }
   }
