@@ -119,8 +119,9 @@ function mergeJsonMcpConfig(configPath: string, server: McpServerSpec): void {
   const directory = path.dirname(configPath);
   fs.mkdirSync(directory, { recursive: true });
 
+  const configExists = fs.existsSync(configPath);
   let config: Record<string, unknown> = {};
-  if (fs.existsSync(configPath)) {
+  if (configExists) {
     const raw = fs.readFileSync(configPath, "utf8");
     try {
       const parsed: unknown = JSON.parse(raw);
@@ -137,7 +138,7 @@ function mergeJsonMcpConfig(configPath: string, server: McpServerSpec): void {
   if (!isRecord(config.mcpServers)) {
     throw new Error(`Existing MCP configuration at ${configPath} has an invalid mcpServers object. No changes were made.`);
   }
-  if (fs.existsSync(configPath)) {
+  if (configExists) {
     const backupPath = `${configPath}.bak`;
     if (!fs.existsSync(backupPath)) {
       fs.copyFileSync(configPath, backupPath);
@@ -146,8 +147,10 @@ function mergeJsonMcpConfig(configPath: string, server: McpServerSpec): void {
   }
   config.mcpServers[server.name] = { command: server.command, args: server.args };
 
+  const mode = configExists ? fs.statSync(configPath).mode & 0o777 : 0o600;
   const temporaryPath = `${configPath}.${process.pid}.tmp`;
-  fs.writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  fs.writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode });
+  fs.chmodSync(temporaryPath, mode);
   fs.renameSync(temporaryPath, configPath);
 }
 

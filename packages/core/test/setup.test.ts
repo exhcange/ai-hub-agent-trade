@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -64,6 +64,7 @@ test("preserves the first MCP configuration backup across repeated setup", async
   const original = JSON.stringify({ mcpServers: { existing: { command: "other" } } });
   await (await import("node:fs/promises")).mkdir(join(home, ".cursor"), { recursive: true });
   await writeFile(configPath, original, "utf8");
+  await chmod(configPath, 0o600);
 
   runMcpSetup(setupOptions("cursor", "tenant-a"), { home, platform: "darwin", cwd: home });
   runMcpSetup(setupOptions("cursor", "tenant-b"), { home, platform: "darwin", cwd: home });
@@ -72,6 +73,16 @@ test("preserves the first MCP configuration backup across repeated setup", async
   const config = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers: Record<string, unknown> };
   assert.ok(config.mcpServers["ai-hub-trade-mcp-tenant-a"]);
   assert.ok(config.mcpServers["ai-hub-trade-mcp-tenant-b"]);
+  assert.equal((await stat(configPath)).mode & 0o777, 0o600);
+});
+
+test("writes a new MCP configuration with owner-only permissions", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const configPath = join(home, ".cursor", "mcp.json");
+
+  runMcpSetup(setupOptions("cursor"), { home, platform: "darwin", cwd: home });
+
+  assert.equal((await stat(configPath)).mode & 0o777, 0o600);
 });
 
 test("rejects invalid JSON root or mcpServers objects without modifying the configuration", async () => {
