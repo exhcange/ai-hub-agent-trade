@@ -1,0 +1,219 @@
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { validateProfileName } from "./config.js";
+
+export type McpClientId = "cursor" | "claude-desktop" | "claude-code" | "codex";
+
+export interface McpSetupOptions {
+  client: McpClientId;
+  profile?: string;
+  launch: McpServerLaunch;
+}
+
+export interface McpServerLaunch {
+  command: string;
+  args: string[];
+}
+
+export interface McpSetupRuntime {
+  home: string;
+  platform: NodeJS.Platform;
+  cwd: string;
+  appData?: string;
+  localAppData?: string;
+  xdgConfigHome?: string;
+  executeClientCommand?: (command: "claude" | "codex", args: string[]) => void;
+}
+
+const MCP_BINARY = "ai-hub-trade-mcp";
+
+export const MCP_CLIENT_NAMES: Record<McpClientId, string> = {
+  cursor: "Cursor",
+  "claude-desktop": "Claude Desktop",
+  "claude-code": "Claude Code",
+  codex: "Codex"
+};
+
+export const SUPPORTED_MCP_CLIENTS = Object.keys(MCP_CLIENT_NAMES) as McpClientId[];
+
+interface McpServerSpec {
+  name: string;
+  command: string;
+  args: string[];
+}
+
+interface McpClientAdapter {
+  readonly id: McpClientId;
+  readonly name: string;
+  install(server: McpServerSpec, value: McpSetupRuntime): void;
+}
+
+function runtime(): McpSetupRuntime {
+  const home = os.homedir();
+  return {
+    home,
+    platform: process.platform,
+    cwd: process.cwd(),
+    appData: process.env.APPDATA,
+    localAppData: process.env.LOCALAPPDATA,
+    xdgConfigHome: process.env.XDG_CONFIG_HOME
+  };
+}
+
+function windowsAppData(value: string | undefined, home: string): string {
+  return value ?? path.join(home, "AppData", "Roaming");
+}
+
+function findMicrosoftStoreClaudePath(value: string | undefined, home: string): string | undefined {
+  const packagesDirectory = path.join(value ?? path.join(home, "AppData", "Local"), "Packages");
+  try {
+    const packageName = fs.readdirSync(packagesDirectory).find((entry) => entry.startsWith("Claude_"));
+    if (!packageName) return undefined;
+    const configPath = path.join(
+      packagesDirectory,
+      packageName,
+      "LocalCache",
+      "Roaming",
+      "Claude",
+      "claude_desktop_config.json"
+    );
+    return fs.existsSync(configPath) || fs.existsSync(path.dirname(configPath)) ? configPath : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Returns the config file managed by clients that use JSON MCP registration. */
+export function getMcpClientConfigPath(client: Exclude<McpClientId, "claude-code" | "codex">, value: McpSetupRuntime = runtime()): string {
+  if (client === "cursor") return path.join(value.home, ".cursor", "mcp.json");
+
+  if (value.platform === "win32") {
+    return findMicrosoftStoreClaudePath(value.localAppData, value.home)
+      ?? path.join(windowsAppData(value.appData, value.home), "Claude", "claude_desktop_config.json");
+  }
+  if (value.platform === "darwin") {
+    return path.join(value.home, "Library", "Application Support", "Claude", "claude_desktop_config.json");
+  }
+  return path.join(value.xdgConfigHome ?? path.join(value.home, ".config"), "Claude", "claude_desktop_config.json");
+}
+
+function buildServerSpec(profile: string | undefined, launch: McpServerLaunch): McpServerSpec {
+  return {
+    name: serverName(profile),
+    command: launch.command,
+    args: [...launch.args, ...(profile ? ["--profile", profile] : [])]
+  };
+}
+
+function serverName(profile?: string): string {
+  return profile ? `${MCP_BINARY}-${profile}` : MCP_BINARY;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeJsonMcpConfig(configPath: string, server: McpServerSpec): void {
+  const directory = path.dirname(configPath);
+  fs.mkdirSync(directory, { recursive: true });
+
+  let config: Record<string, unknown> = {};
+  if (fs.existsSync(configPath)) {
+    const raw = fs.readFileSync(configPath, "utf8");
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!isRecord(parsed)) throw new Error("root must be a JSON object");
+      config = parsed;
+    } catch {
+      throw new Error(`Failed to parse existing MCP configuration at ${configPath}. No changes were made.`);
+    }
+  }
+
+  if (config.mcpServers === undefined) {
+    config.mcpServers = {};
+  }
+  if (!isRecord(config.mcpServers)) {
+    throw new Error(`Existing MCP configuration at ${configPath} has an invalid mcpServers object. No changes were made.`);
+  }
+  if (fs.existsSync(configPath)) {
+    const backupPath = `${configPath}.bak`;
+    if (!fs.existsSync(backupPath)) {
+      fs.copyFileSync(configPath, backupPath);
+      process.stdout.write(`Backup created: ${backupPath}\n`);
+    }
+  }
+  config.mcpServers[server.name] = { command: server.command, args: server.args };
+
+  const temporaryPath = `${configPath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  fs.renameSync(temporaryPath, configPath);
+}
+
+function executeClientRegistration(command: "claude" | "codex", args: string[], value: McpSetupRuntime): void {
+  process.stdout.write(`Running: ${command} ${args.join(" ")}\n`);
+  if (value.executeClientCommand) {
+    value.executeClientCommand(command, args);
+    return;
+  }
+  execFileSync(command, args, { stdio: "inherit" }); // NOSONAR -- commands and arguments are fixed by this module.
+}
+
+function jsonFileAdapter(id: "cursor" | "claude-desktop"): McpClientAdapter {
+  return {
+    id,
+    name: MCP_CLIENT_NAMES[id],
+    install(server, value): void {
+      mergeJsonMcpConfig(getMcpClientConfigPath(id, value), server);
+      process.stdout.write(`Configured ${this.name}: ${getMcpClientConfigPath(id, value)}\nRestart ${this.name} to apply changes.\n`);
+    }
+  };
+}
+
+function cliAdapter(id: "claude-code" | "codex"): McpClientAdapter {
+  const command = id === "claude-code" ? "claude" : "codex";
+  return {
+    id,
+    name: MCP_CLIENT_NAMES[id],
+    install(server, value): void {
+      const args = [
+        "mcp",
+        "add",
+        ...(id === "claude-code" ? ["--scope", "user", "--transport", "stdio"] : []),
+        server.name,
+        "--",
+        server.command,
+        ...server.args
+      ];
+      executeClientRegistration(command, args, value);
+      process.stdout.write(`Configured ${this.name} with local stdio MCP server "${server.name}".\n`);
+    }
+  };
+}
+
+const MCP_CLIENT_ADAPTERS: Record<McpClientId, McpClientAdapter> = {
+  cursor: jsonFileAdapter("cursor"),
+  "claude-desktop": jsonFileAdapter("claude-desktop"),
+  "claude-code": cliAdapter("claude-code"),
+  codex: cliAdapter("codex")
+};
+
+/** Registers the local stdio MCP package with one supported AI client. */
+export function runMcpSetup(options: McpSetupOptions, value: McpSetupRuntime = runtime()): void {
+  const adapter = MCP_CLIENT_ADAPTERS[options.client];
+  if (!adapter) {
+    throw new Error(`Unknown MCP client "${options.client}". Supported clients: ${SUPPORTED_MCP_CLIENTS.join(", ")}.`);
+  }
+  const profile = options.profile ? validateProfileName(options.profile) : undefined;
+  adapter.install(buildServerSpec(profile, options.launch), value);
+}
+
+export function printMcpSetupUsage(): void {
+  process.stdout.write(
+    `Usage: ${MCP_BINARY} setup --client <client> [--profile <name>]\n\n` +
+    `Supported clients:\n` +
+    SUPPORTED_MCP_CLIENTS.map((client) => `  ${client.padEnd(16)} ${MCP_CLIENT_NAMES[client]}`).join("\n") +
+    "\n"
+  );
+}

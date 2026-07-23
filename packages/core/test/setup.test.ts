@@ -1,0 +1,127 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { AiHubError, getMcpClientConfigPath, MCP_CLIENT_NAMES, runMcpSetup, SUPPORTED_MCP_CLIENTS } from "../src/index.js";
+
+function setupOptions(client: "cursor" | "claude-desktop" | "claude-code" | "codex", profile?: string) {
+  return { client, profile, launch: { command: "/usr/local/bin/node", args: ["/opt/ai-hub/agent-trade-mcp/dist/index.js"] } };
+}
+
+test("declares the first-release MCP clients", () => {
+  assert.deepEqual(SUPPORTED_MCP_CLIENTS, ["cursor", "claude-desktop", "claude-code", "codex"]);
+  assert.equal(MCP_CLIENT_NAMES.codex, "Codex");
+});
+
+test("resolves the Cursor MCP configuration path from the user home", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const configPath = getMcpClientConfigPath("cursor", { home, platform: "darwin", cwd: home });
+  assert.equal(configPath, join(home, ".cursor", "mcp.json"));
+});
+
+test("resolves the macOS Claude Desktop configuration path from the user home", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const configPath = getMcpClientConfigPath("claude-desktop", { home, platform: "darwin", cwd: home });
+  assert.equal(configPath, join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"));
+});
+
+test("resolves the Linux Claude Desktop configuration path from XDG_CONFIG_HOME", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const xdgConfigHome = join(home, "xdg-config");
+  const configPath = getMcpClientConfigPath("claude-desktop", { home, platform: "linux", cwd: home, xdgConfigHome });
+  assert.equal(configPath, join(xdgConfigHome, "Claude", "claude_desktop_config.json"));
+});
+
+test("does not change a user configuration while locating its path", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const configPath = join(home, ".cursor", "mcp.json");
+  await writeFile(join(home, "marker"), "unchanged", "utf8");
+  assert.equal(getMcpClientConfigPath("cursor", { home, platform: "linux", cwd: home }), configPath);
+  assert.equal(await readFile(join(home, "marker"), "utf8"), "unchanged");
+});
+
+test("merges a Cursor MCP registration and keeps an existing server", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const configPath = join(home, ".cursor", "mcp.json");
+  await (await import("node:fs/promises")).mkdir(join(home, ".cursor"), { recursive: true });
+  await writeFile(configPath, JSON.stringify({ mcpServers: { existing: { command: "other" } } }), "utf8");
+
+  runMcpSetup(setupOptions("cursor", "tenant-a"), { home, platform: "darwin", cwd: home });
+
+  const config = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers: Record<string, { command: string; args: string[] }> };
+  assert.deepEqual(config.mcpServers.existing, { command: "other" });
+  assert.deepEqual(config.mcpServers["ai-hub-trade-mcp-tenant-a"], {
+    command: "/usr/local/bin/node",
+    args: ["/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "tenant-a"]
+  });
+  assert.equal(await readFile(`${configPath}.bak`, "utf8"), JSON.stringify({ mcpServers: { existing: { command: "other" } } }));
+});
+
+test("preserves the first MCP configuration backup across repeated setup", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const configPath = join(home, ".cursor", "mcp.json");
+  const original = JSON.stringify({ mcpServers: { existing: { command: "other" } } });
+  await (await import("node:fs/promises")).mkdir(join(home, ".cursor"), { recursive: true });
+  await writeFile(configPath, original, "utf8");
+
+  runMcpSetup(setupOptions("cursor", "tenant-a"), { home, platform: "darwin", cwd: home });
+  runMcpSetup(setupOptions("cursor", "tenant-b"), { home, platform: "darwin", cwd: home });
+
+  assert.equal(await readFile(`${configPath}.bak`, "utf8"), original);
+  const config = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers: Record<string, unknown> };
+  assert.ok(config.mcpServers["ai-hub-trade-mcp-tenant-a"]);
+  assert.ok(config.mcpServers["ai-hub-trade-mcp-tenant-b"]);
+});
+
+test("rejects invalid JSON root or mcpServers objects without modifying the configuration", async () => {
+  for (const value of ["[]", "null", JSON.stringify({ mcpServers: [] })]) {
+    const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+    const configPath = join(home, ".cursor", "mcp.json");
+    await (await import("node:fs/promises")).mkdir(join(home, ".cursor"), { recursive: true });
+    await writeFile(configPath, value, "utf8");
+
+    assert.throws(
+      () => runMcpSetup(setupOptions("cursor"), { home, platform: "darwin", cwd: home }),
+      /No changes were made/
+    );
+    assert.equal(await readFile(configPath, "utf8"), value);
+    await assert.rejects(readFile(`${configPath}.bak`, "utf8"), { code: "ENOENT" });
+  }
+});
+
+test("rejects an invalid profile before changing a client configuration", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  assert.throws(
+    () => runMcpSetup(setupOptions("cursor", "../invalid"), { home, platform: "darwin", cwd: home }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_PROFILE"
+  );
+  await assert.rejects(readFile(join(home, ".cursor", "mcp.json"), "utf8"), { code: "ENOENT" });
+});
+
+test("uses the official client CLIs for Claude Code and Codex", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const commands: Array<{ command: string; args: string[] }> = [];
+  const value = {
+    home,
+    platform: "darwin" as const,
+    cwd: home,
+    executeClientCommand(command: "claude" | "codex", args: string[]): void {
+      commands.push({ command, args });
+    }
+  };
+
+  runMcpSetup(setupOptions("claude-code", "default"), value);
+  runMcpSetup(setupOptions("codex", "default"), value);
+
+  assert.deepEqual(commands, [
+    {
+      command: "claude",
+      args: ["mcp", "add", "--scope", "user", "--transport", "stdio", "ai-hub-trade-mcp-default", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default"]
+    },
+    {
+      command: "codex",
+      args: ["mcp", "add", "ai-hub-trade-mcp-default", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default"]
+    }
+  ]);
+});

@@ -16,3 +16,14 @@ export {
   type ResolvedProfile,
   type TenantProfile
 } from "./config.js";
+export {
+  getMcpClientConfigPath,
+  MCP_CLIENT_NAMES,
+  printMcpSetupUsage,
+  runMcpSetup,
+  SUPPORTED_MCP_CLIENTS,
+  type McpClientId,
+  type McpServerLaunch,
+  type McpSetupRuntime,
+  type McpSetupOptions
+} from "./setup.js";

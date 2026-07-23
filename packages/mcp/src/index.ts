@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { AiHubError } from "@ai-hub/agent-trade-core";
+import { AiHubError, printMcpSetupUsage, runMcpSetup, SUPPORTED_MCP_CLIENTS, type McpClientId } from "@ai-hub/agent-trade-core";
 import { createServer } from "./server.js";
 
 function readOption(args: string[], option: string): string | undefined {
@@ -12,6 +12,21 @@ function readOption(args: string[], option: string): string | undefined {
 }
 
 export async function main(argv: string[]): Promise<void> {
+  if (argv[0] === "setup") {
+    const client = readOption(argv.slice(1), "--client");
+    const profile = readOption(argv.slice(1), "--profile");
+    if (!client) {
+      printMcpSetupUsage();
+      return;
+    }
+    if (!SUPPORTED_MCP_CLIENTS.includes(client as McpClientId)) {
+      throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `Unknown MCP client "${client}". Supported clients: ${SUPPORTED_MCP_CLIENTS.join(", ")}.`);
+    }
+    const entrypoint = process.argv[1];
+    if (!entrypoint) throw new AiHubError("AI_HUB_UNEXPECTED_ERROR", "Cannot locate the local MCP server entrypoint for client setup.");
+    runMcpSetup({ client: client as McpClientId, profile, launch: { command: process.execPath, args: [entrypoint] } });
+    return;
+  }
   const profileName = readOption(argv, "--profile");
   const readOnly = argv.includes("--read-only");
   const server = createServer(profileName, readOnly);
