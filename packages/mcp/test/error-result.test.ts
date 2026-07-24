@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OpenApiBusinessError, diagnoseOpenApiBusinessError } from "@ai-hub/agent-trade-core";
-import { toMcpErrorResult } from "../src/server.js";
+import { formatMcpData, toMcpErrorResult } from "../src/server.js";
 
 test("MCP marks an upstream business failure as an MCP error with diagnosis", () => {
   const error = new OpenApiBusinessError(
@@ -22,4 +22,16 @@ test("MCP marks an upstream business failure as an MCP error with diagnosis", ()
     retryable: false,
     writeOutcomeUnknown: false
   });
+});
+
+test("MCP normalizes every read response to a stable, type-discriminated shape", () => {
+  assert.deepEqual(formatMcpData("market_get_ticker", [{ symbol: "BTCUSDT" }]), {
+    dataType: "array",
+    items: [{ symbol: "BTCUSDT" }],
+    tickers: [{ symbol: "BTCUSDT" }],
+    count: 1
+  });
+  assert.deepEqual(formatMcpData("market_get_depth", { bids: [] }), { dataType: "object", value: { bids: [] } });
+  assert.deepEqual(formatMcpData("market_ping", "pong"), { dataType: "scalar", value: "pong" });
+  assert.deepEqual(formatMcpData("market_ping", null), { dataType: "null", value: null });
 });

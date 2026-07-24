@@ -24,3 +24,13 @@ Setup registers the currently installed MCP binary through its absolute Node run
 Use `spot_prepare_market_buy` or `margin_prepare_market_buy` only with `quoteAmount` (for example, the exact USDT amount to spend for `ETHUSDT`). Use `spot_prepare_market_sell` or `margin_prepare_market_sell` only with `baseQuantity` (the exact ETH amount to sell for `ETHUSDT`). A market buy cannot guarantee an exact base-asset quantity; it must never reinterpret a requested base quantity as a quote amount.
 
 Before any order preview, MCP lazily loads `/sapi/v2/symbols` once per local profile and caches the symbol rules in memory for five minutes. Known quantity/price precision and limit-order minimum violations are rejected before confirmation.
+
+## Ticker response
+
+All read tools return `{ "ok": true, "data": ... }` in one of these stable forms:
+
+- Arrays: `{ "dataType": "array", "items": [...], "count": 500 }`
+- Objects: `{ "dataType": "object", "value": { ... } }`
+- Scalars: `{ "dataType": "scalar", "value": "..." }`
+
+`market_get_ticker` additionally exposes `data.tickers` as an alias of `data.items`. Check `data.dataType` before formatting; do not infer raw OpenAPI nesting.

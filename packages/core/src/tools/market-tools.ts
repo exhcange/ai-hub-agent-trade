@@ -36,7 +36,7 @@ export const marketTools: ToolSpec[] = [
   {
     name: "market_get_ticker",
     title: "Get Spot Ticker",
-    description: "Get spot ticker data. Pass symbol or symbols when filtering is needed.",
+    description: "Get spot ticker data. Pass symbol or symbols when filtering is needed. The raw OpenAPI response is a ticker array.",
     cliPath: ["market", "ticker"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, symbols: { type: "string" }, timeZone: { type: "string" } }, additionalProperties: false },

@@ -9,6 +9,21 @@ function result(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
+/** Adapts every read response into a stable MCP response shape so Agents never need to infer raw API shape. */
+export function formatMcpData(toolName: string, data: unknown): unknown {
+  if (Array.isArray(data)) {
+    return {
+      dataType: "array",
+      items: data,
+      count: data.length,
+      ...(toolName === "market_get_ticker" ? { tickers: data } : {})
+    };
+  }
+  if (data === null || data === undefined) return { dataType: "null", value: null };
+  if (typeof data === "object") return { dataType: "object", value: data };
+  return { dataType: "scalar", value: data };
+}
+
 export function toMcpErrorResult(error: unknown): CallToolResult {
   const payload = toAiHubErrorPayload(error);
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, ...payload }) }] };
@@ -18,7 +33,7 @@ function toMcpTool(tool: ToolSpec): Tool {
   return {
     name: tool.name,
     title: tool.title,
-    description: tool.description,
+    description: `${tool.description}${tool.operation === "read" ? " Successful MCP output is always { ok: true, data: ... }. For list results, use data.items and data.count (market_get_ticker also provides data.tickers); for object results, use data.value. Check data.dataType before formatting." : ""}`,
     inputSchema: tool.inputSchema,
     annotations: {
       readOnlyHint: tool.operation === "read",
@@ -49,10 +64,10 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
   const registry = createToolRegistry();
   const writeExecutor = new ToolWriteExecutor(registry);
   const server = new Server(
-    { name: "ai-hub-agent-trade", version: "0.1.3" },
+    { name: "ai-hub-agent-trade", version: "0.1.5" },
     {
       capabilities: { tools: {} },
-      instructions: "For every state-changing action, call only a spot_prepare_* or margin_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message. For spot and margin orders, MARKET BUY always uses quoteAmount (the quote asset to spend); MARKET SELL uses baseQuantity (the base asset to sell). Never reinterpret a requested base quantity as quoteAmount."
+      instructions: "Every successful tool response is JSON text in the envelope { ok: true, data: ... }. All read-tool data is normalized: dataType=array means use data.items and data.count; dataType=object or scalar means use data.value; dataType=null means no value. market_get_ticker also provides data.tickers as an alias of data.items. Inspect data.dataType before formatting and never assume undocumented nested keys. Prepare/confirm tools return their documented action payload directly in data. For every state-changing action, call only a spot_prepare_* or margin_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message. For spot and margin orders, MARKET BUY always uses quoteAmount (the quote asset to spend); MARKET SELL uses baseQuantity (the base asset to sell). Never reinterpret a requested base quantity as quoteAmount."
     }
   );
 
@@ -101,7 +116,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
         return result({ ok: true, data: await writeExecutor.prepare(preparedTool.name, request.params.arguments ?? {}, context) });
       }
       const data = await registry.execute(request.params.name, request.params.arguments ?? {}, context, { readOnly });
-      return result({ ok: true, data });
+      return result({ ok: true, data: formatMcpData(request.params.name, data) });
     } catch (error) {
       return toMcpErrorResult(error);
     }
