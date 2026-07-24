@@ -34,3 +34,7 @@ Market BUY cannot guarantee an exact base-asset quantity. If the desired quantit
 The same unit rules apply to margin orders: use `margin order market-buy --quote-amount`, `margin order market-sell --base-quantity`, or `margin order limit --base-quantity --price`.
 
 Before an order preview is created, the CLI lazily loads `/sapi/v2/symbols` once per local profile and keeps the rule snapshot in memory for five minutes. It rejects known quantity/price precision and limit-order minimum violations before asking for confirmation.
+
+## Bounded market analysis
+
+For broad market requests, use `ai-hub market symbols-search`, `ticker-summary`, `depth-summary`, `trades-summary`, or `klines-summary`. These commands return Agent-friendly bounded results instead of complete market payloads. Raw trades and klines are capped at 100 rows.

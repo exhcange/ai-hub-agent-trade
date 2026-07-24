@@ -4,19 +4,40 @@ import { AiHubError, createToolExecutionContext, createToolRegistry, toAiHubErro
 
 const CAPABILITIES_TOOL = "system_get_capabilities";
 const CONFIRM_ACTION_TOOL = "confirm_action";
+const READ_RESULT_OUTPUT_SCHEMA: Tool["outputSchema"] = {
+  type: "object",
+  properties: {
+    ok: { type: "boolean", const: true },
+    data: {
+      type: "object",
+      properties: {
+        dataType: { type: "string", enum: ["array", "object", "scalar", "null"] },
+        items: { type: "array" },
+        count: { type: "integer", minimum: 0 },
+        value: {}
+      },
+      required: ["dataType"]
+    }
+  },
+  required: ["ok", "data"]
+};
 
 function result(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
+export function toMcpReadResult(data: unknown): CallToolResult {
+  const payload = { ok: true, data };
+  return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], structuredContent: payload };
+}
+
 /** Adapts every read response into a stable MCP response shape so Agents never need to infer raw API shape. */
-export function formatMcpData(toolName: string, data: unknown): unknown {
+export function formatMcpData(data: unknown): unknown {
   if (Array.isArray(data)) {
     return {
       dataType: "array",
       items: data,
-      count: data.length,
-      ...(toolName === "market_get_ticker" ? { tickers: data } : {})
+      count: data.length
     };
   }
   if (data === null || data === undefined) return { dataType: "null", value: null };
@@ -33,8 +54,9 @@ function toMcpTool(tool: ToolSpec): Tool {
   return {
     name: tool.name,
     title: tool.title,
-    description: `${tool.description}${tool.operation === "read" ? " Successful MCP output is always { ok: true, data: ... }. For list results, use data.items and data.count (market_get_ticker also provides data.tickers); for object results, use data.value. Check data.dataType before formatting." : ""}`,
+    description: `${tool.description}${tool.operation === "read" ? " Successful MCP output is structured as { ok: true, data: ... }. For list results, use data.items and data.count; for object results, use data.value. Check data.dataType before formatting." : ""}`,
     inputSchema: tool.inputSchema,
+    ...(tool.operation === "read" ? { outputSchema: READ_RESULT_OUTPUT_SCHEMA } : {}),
     annotations: {
       readOnlyHint: tool.operation === "read",
       destructiveHint: tool.riskLevel === "high",
@@ -64,10 +86,10 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
   const registry = createToolRegistry();
   const writeExecutor = new ToolWriteExecutor(registry);
   const server = new Server(
-    { name: "ai-hub-agent-trade", version: "0.1.5" },
+    { name: "ai-hub-agent-trade", version: "0.1.6" },
     {
       capabilities: { tools: {} },
-      instructions: "Every successful tool response is JSON text in the envelope { ok: true, data: ... }. All read-tool data is normalized: dataType=array means use data.items and data.count; dataType=object or scalar means use data.value; dataType=null means no value. market_get_ticker also provides data.tickers as an alias of data.items. Inspect data.dataType before formatting and never assume undocumented nested keys. Prepare/confirm tools return their documented action payload directly in data. For every state-changing action, call only a spot_prepare_* or margin_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message. For spot and margin orders, MARKET BUY always uses quoteAmount (the quote asset to spend); MARKET SELL uses baseQuantity (the base asset to sell). Never reinterpret a requested base quantity as quoteAmount."
+      instructions: "Every successful read-tool response provides both JSON text and MCP structuredContent in the envelope { ok: true, data: ... }. All read-tool data is normalized: dataType=array means use data.items and data.count; dataType=object or scalar means use data.value; dataType=null means no value. Inspect data.dataType before formatting and never assume undocumented nested keys. For broad market questions, call market_search_symbols, market_get_ticker_summary, market_get_depth_summary, market_get_trades_summary, or market_get_klines_summary instead of fetching large raw payloads. Prepare/confirm tools return their documented action payload directly in data. For every state-changing action, call only a spot_prepare_* or margin_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message. For spot and margin orders, MARKET BUY always uses quoteAmount (the quote asset to spend); MARKET SELL uses baseQuantity (the base asset to sell). Never reinterpret a requested base quantity as quoteAmount."
     }
   );
 
@@ -116,7 +138,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
         return result({ ok: true, data: await writeExecutor.prepare(preparedTool.name, request.params.arguments ?? {}, context) });
       }
       const data = await registry.execute(request.params.name, request.params.arguments ?? {}, context, { readOnly });
-      return result({ ok: true, data: formatMcpData(request.params.name, data) });
+      return toMcpReadResult(formatMcpData(data));
     } catch (error) {
       return toMcpErrorResult(error);
     }

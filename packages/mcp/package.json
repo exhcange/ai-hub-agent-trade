@@ -1,6 +1,6 @@
 {
   "name": "@aihubspot/agent-trade-mcp",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Local stdio MCP server for AI Hub spot trading tools",
   "license": "UNLICENSED",
   "type": "module",

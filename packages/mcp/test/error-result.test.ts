@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { OpenApiBusinessError, diagnoseOpenApiBusinessError } from "@ai-hub/agent-trade-core";
-import { formatMcpData, toMcpErrorResult } from "../src/server.js";
+import { formatMcpData, toMcpErrorResult, toMcpReadResult } from "../src/server.js";
 
 test("MCP marks an upstream business failure as an MCP error with diagnosis", () => {
   const error = new OpenApiBusinessError(
@@ -25,13 +25,21 @@ test("MCP marks an upstream business failure as an MCP error with diagnosis", ()
 });
 
 test("MCP normalizes every read response to a stable, type-discriminated shape", () => {
-  assert.deepEqual(formatMcpData("market_get_ticker", [{ symbol: "BTCUSDT" }]), {
+  assert.deepEqual(formatMcpData([{ symbol: "BTCUSDT" }]), {
     dataType: "array",
     items: [{ symbol: "BTCUSDT" }],
-    tickers: [{ symbol: "BTCUSDT" }],
     count: 1
   });
-  assert.deepEqual(formatMcpData("market_get_depth", { bids: [] }), { dataType: "object", value: { bids: [] } });
-  assert.deepEqual(formatMcpData("market_ping", "pong"), { dataType: "scalar", value: "pong" });
-  assert.deepEqual(formatMcpData("market_ping", null), { dataType: "null", value: null });
+  assert.deepEqual(formatMcpData({ bids: [] }), { dataType: "object", value: { bids: [] } });
+  assert.deepEqual(formatMcpData("pong"), { dataType: "scalar", value: "pong" });
+  assert.deepEqual(formatMcpData(null), { dataType: "null", value: null });
+});
+
+test("MCP returns normalized reads as protocol structured content and JSON text", () => {
+  const data = formatMcpData([{ symbol: "BTC/USDT" }]);
+  const result = toMcpReadResult(data);
+  assert.deepEqual(result.structuredContent, { ok: true, data });
+  const content = result.content[0];
+  assert.equal(content?.type, "text");
+  assert.deepEqual(JSON.parse(content?.text ?? "{}"), { ok: true, data });
 });

@@ -25,7 +25,7 @@ Use `spot_prepare_market_buy` or `margin_prepare_market_buy` only with `quoteAmo
 
 Before any order preview, MCP lazily loads `/sapi/v2/symbols` once per local profile and caches the symbol rules in memory for five minutes. Known quantity/price precision and limit-order minimum violations are rejected before confirmation.
 
-## Ticker response
+## Read response
 
 All read tools return `{ "ok": true, "data": ... }` in one of these stable forms:
 
@@ -33,4 +33,16 @@ All read tools return `{ "ok": true, "data": ... }` in one of these stable forms
 - Objects: `{ "dataType": "object", "value": { ... } }`
 - Scalars: `{ "dataType": "scalar", "value": "..." }`
 
-`market_get_ticker` additionally exposes `data.tickers` as an alias of `data.items`. Check `data.dataType` before formatting; do not infer raw OpenAPI nesting.
+MCP clients that support the current protocol also receive the same envelope in `structuredContent`, validated by each read tool's output schema. Check `data.dataType` before formatting; do not infer raw OpenAPI nesting.
+
+## Bounded market analysis
+
+Use these tools for requests that would otherwise return a broad market payload:
+
+- `market_search_symbols`: bounded symbol search and metadata.
+- `market_get_ticker_summary`: watchlist, gainers, losers, and quote-volume leaders.
+- `market_get_depth_summary`: best bid/ask, spread, and up to 20 levels per side.
+- `market_get_trades_summary`: price range, buy/sell statistics, and up to 50 recent trades.
+- `market_get_klines_summary`: period change, high/low, latest candle, and up to 100 candles.
+
+The raw symbol, ticker, depth, trades, and kline tools remain available only when an exact full payload is explicitly needed. Raw trades and klines are capped at 100 rows by this client.

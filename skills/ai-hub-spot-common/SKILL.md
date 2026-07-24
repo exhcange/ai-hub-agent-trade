@@ -18,17 +18,23 @@ Confirm that the requested profile has the intended OpenAPI URL. Read [../_share
 | `ai-hub market ping` | Test the configured OpenAPI connection. |
 | `ai-hub market time` | Get server time. |
 | `ai-hub market symbols` | List supported spot symbols. |
-| `ai-hub market ticker` | Get ticker data, optionally filtered by symbol. |
+| `ai-hub market symbols-search` | Search symbols with a bounded metadata result. |
+| `ai-hub market ticker` | Get exact ticker data for an explicitly requested symbol or symbol list. |
+| `ai-hub market ticker-summary` | Get a bounded market overview, movers, and volume leaders. |
+| `ai-hub market depth-summary` | Get best bid/ask, spread, and bounded book levels. |
+| `ai-hub market trades-summary` | Get bounded recent-trade statistics and samples. |
+| `ai-hub market klines-summary` | Get bounded candle analysis and samples. |
 | `ai-hub market depth` | Get order-book depth for one symbol. |
 | `ai-hub market trades` | Get recent trades for one symbol. |
 | `ai-hub market klines` | Get candlesticks for one symbol and interval. |
 
 ## Operating Flow
 
-1. Identify the symbol and interval or limit when the command needs them.
-2. Execute the read-only command immediately.
-3. State whether the result is raw market data and avoid presenting it as investment advice.
-4. Route balance, asset movement, sub-account, or order requests to the focused Skill.
+1. For broad market questions, use a `*-summary` command or `symbols-search`; do not request a large raw payload.
+2. Identify the symbol and interval or limit when the command needs them.
+3. Execute the read-only command immediately.
+4. State whether the result is a bounded summary or raw market data and avoid presenting it as investment advice.
+5. Route balance, asset movement, sub-account, or order requests to the focused Skill.
 
 If a public endpoint returns `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Use its `reason` and `suggestedAction`; do not infer a cause from the code alone.
 
