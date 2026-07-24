@@ -49,10 +49,10 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
   const registry = createToolRegistry();
   const writeExecutor = new ToolWriteExecutor(registry);
   const server = new Server(
-    { name: "ai-hub-agent-trade", version: "0.1.0" },
+    { name: "ai-hub-agent-trade", version: "0.1.3" },
     {
       capabilities: { tools: {} },
-      instructions: "For every state-changing action, call only a spot_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message."
+      instructions: "For every state-changing action, call only a spot_prepare_* or margin_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message. For spot and margin orders, MARKET BUY always uses quoteAmount (the quote asset to spend); MARKET SELL uses baseQuantity (the base asset to sell). Never reinterpret a requested base quantity as quoteAmount."
     }
   );
 
@@ -98,7 +98,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
       }
       const preparedTool = registry.list({ readOnly: false }).find((tool) => tool.operation === "write" && prepareToolName(tool) === request.params.name);
       if (preparedTool) {
-        return result({ ok: true, data: writeExecutor.prepare(preparedTool.name, request.params.arguments ?? {}, context) });
+        return result({ ok: true, data: await writeExecutor.prepare(preparedTool.name, request.params.arguments ?? {}, context) });
       }
       const data = await registry.execute(request.params.name, request.params.arguments ?? {}, context, { readOnly });
       return result({ ok: true, data });

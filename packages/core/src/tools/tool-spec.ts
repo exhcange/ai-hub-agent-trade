@@ -32,6 +32,8 @@ export interface ToolSpec<Input = Record<string, unknown>> {
   inputSchema: JsonSchema;
   errorCodes: readonly string[];
   validate(input: unknown): Input;
+  /** Optional asynchronous preflight performed before a write is presented for confirmation. */
+  preflight?(input: Input, context: ToolExecutionContext): Promise<Input>;
   handler(input: Input, context: ToolExecutionContext): Promise<unknown>;
   writeSummary?(input: Input): Record<string, unknown>;
 }

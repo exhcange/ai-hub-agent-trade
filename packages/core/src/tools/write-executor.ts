@@ -11,7 +11,7 @@ export class ToolWriteExecutor {
     private readonly confirmations = new ConfirmationService()
   ) {}
 
-  public prepare(name: string, input: unknown, context: ToolExecutionContext): PreparedAction {
+  public prepare(name: string, input: unknown, context: ToolExecutionContext): Promise<PreparedAction> {
     return this.registry.prepareWrite(name, input, context, this.confirmations);
   }
 

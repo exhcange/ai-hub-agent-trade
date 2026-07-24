@@ -31,15 +31,15 @@ test("registry applies the same input validation for every adapter", async () =>
 test("registry contains every migrated non-derivatives API capability", () => {
   const registry = createToolRegistry();
   const expected = [
-    "market_ping", "spot_test_order", "spot_batch_place_orders", "spot_batch_cancel_orders",
-    "margin_get_order", "margin_get_open_orders", "margin_get_fills", "margin_place_order", "margin_cancel_order",
+    "market_ping", "spot_test_order", "spot_market_buy", "spot_market_sell", "spot_limit_order", "spot_batch_place_orders", "spot_batch_cancel_orders",
+    "margin_get_order", "margin_get_open_orders", "margin_get_fills", "margin_market_buy", "margin_market_sell", "margin_limit_order", "margin_cancel_order",
     "account_transfer", "account_get_transfer_history",
     "wallet_universal_transfer", "wallet_get_universal_transfer_history", "wallet_get_deposit_history", "wallet_get_deposit_address", "wallet_get_withdraw_address", "wallet_get_transferable_assets", "wallet_get_exchange_account", "wallet_create_withdraw", "wallet_get_withdraw_history",
     "sub_account_list", "sub_account_create", "sub_account_update_trading_status", "sub_account_get_api_key_ips", "sub_account_update_api_key_ips", "sub_account_delete_api_key", "sub_account_get_assets", "sub_account_root_transfer", "sub_account_get_root_transfer_history", "sub_account_internal_transfer", "sub_account_get_internal_transfer_history", "sub_account_transfer_to_parent", "sub_account_get_parent_transfer_history"
   ];
   for (const name of expected) assert.ok(registry.byName(name));
   assert.equal(registry.byName("spot_test_order").operation, "read");
-  const writes = ["spot_batch_place_orders", "spot_batch_cancel_orders", "margin_place_order", "margin_cancel_order", "account_transfer", "wallet_universal_transfer", "wallet_create_withdraw", "sub_account_create", "sub_account_update_trading_status", "sub_account_update_api_key_ips", "sub_account_delete_api_key", "sub_account_root_transfer", "sub_account_internal_transfer", "sub_account_transfer_to_parent"];
+  const writes = ["spot_market_buy", "spot_market_sell", "spot_limit_order", "spot_batch_place_orders", "spot_batch_cancel_orders", "margin_market_buy", "margin_market_sell", "margin_limit_order", "margin_cancel_order", "account_transfer", "wallet_universal_transfer", "wallet_create_withdraw", "sub_account_create", "sub_account_update_trading_status", "sub_account_update_api_key_ips", "sub_account_delete_api_key", "sub_account_root_transfer", "sub_account_internal_transfer", "sub_account_transfer_to_parent"];
   for (const name of writes) {
     assert.equal(registry.byName(name).operation, "write", `${name} must require confirmation`);
   }

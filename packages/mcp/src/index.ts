@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { AiHubError, printMcpSetupUsage, runMcpSetup, SUPPORTED_MCP_CLIENTS, type McpClientId } from "@ai-hub/agent-trade-core";
 import { createServer } from "./server.js";
@@ -11,7 +13,23 @@ function readOption(args: string[], option: string): string | undefined {
   return value;
 }
 
+function printUsage(): void {
+  process.stdout.write(
+    "AI Hub Agent Trade MCP\n\n" +
+    "Usage:\n" +
+    "  ai-hub-trade-mcp [--profile <name>] [--read-only]\n" +
+    "  ai-hub-trade-mcp setup --client <client> [--profile <name>]\n\n" +
+    "The default command starts the local stdio MCP server.\n" +
+    "Use setup to register it with Cursor, Claude Desktop, Claude Code, or Codex.\n"
+  );
+}
+
 export async function main(argv: string[]): Promise<void> {
+  if (argv.includes("--help") || argv.includes("-h")) {
+    printUsage();
+    return;
+  }
+
   if (argv[0] === "setup") {
     const client = readOption(argv.slice(1), "--client");
     const profile = readOption(argv.slice(1), "--profile");
@@ -33,7 +51,16 @@ export async function main(argv: string[]): Promise<void> {
   await server.connect(new StdioServerTransport());
 }
 
-main(process.argv.slice(2)).catch((error: unknown) => {
+function isDirectExecution(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectExecution()) main(process.argv.slice(2)).catch((error: unknown) => {
   const payload = error instanceof AiHubError
     ? { code: error.code, message: error.message }
     : { code: "AI_HUB_UNEXPECTED_ERROR", message: error instanceof Error ? error.message : "Unexpected error" };

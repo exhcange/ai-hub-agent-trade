@@ -6,6 +6,7 @@ export { diagnoseOpenApiBusinessError } from "./openapi-error-catalog.js";
 export { createToolRegistry, ToolRegistry, type ToolCapability, type ToolListOptions } from "./tools/tool-registry.js";
 export { confirmationContext, createToolExecutionContext } from "./tools/execution-context.js";
 export { ToolWriteExecutor } from "./tools/write-executor.js";
+export { clearSymbolRuleCache, getSymbolRule, preflightSymbolOrder, type SymbolRule } from "./tools/symbol-rules.js";
 export type { JsonSchema, ToolAccess, ToolExecutionContext, ToolOperation, ToolRiskLevel, ToolSpec } from "./tools/tool-spec.js";
 export {
   ConfigStore,

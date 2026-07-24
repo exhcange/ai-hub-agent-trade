@@ -4,10 +4,19 @@ import type { SpotCancelOrderParams, SpotPlaceOrderParams } from "../openapi.js"
 import type { ToolSpec } from "./tool-spec.js";
 import { requiredEnum } from "./tool-utils.js";
 import { optionalInteger, optionalString, requiredString, strictObject } from "./validation.js";
+import { preflightSymbolOrder } from "./symbol-rules.js";
 
 const signedReadErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_CREDENTIAL_NOT_CONFIGURED", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
 const writeErrors = [...signedReadErrors, "AI_HUB_WRITE_CONFIRMATION_REQUIRED", "AI_HUB_CONFIRMATION_REQUIRED", "AI_HUB_CONFIRMATION_EXPIRED", "AI_HUB_CONFIRMATION_CONTEXT_CHANGED", "AI_HUB_CONFIRMATION_NOT_FOUND"] as const;
 const decimal = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
+
+type SpotOrderIntent = "market_buy" | "market_sell" | "limit";
+
+interface SemanticSpotOrder extends SpotPlaceOrderParams {
+  intent: SpotOrderIntent;
+  quoteAmount?: string;
+  baseQuantity?: string;
+}
 
 function positiveDecimal(value: Record<string, unknown>, name: string): string {
   const raw = requiredString(value, name);
@@ -40,24 +49,80 @@ function clientOrderId(value: Record<string, unknown>): string {
   return `agent_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
 }
 
-function validatePlaceOrder(input: unknown): SpotPlaceOrderParams {
-  const value = strictObject(input, ["symbol", "volume", "side", "type", "price", "timeInForce", "newClientOrderId", "recvWindow"]);
-  const type = orderType(value);
-  const price = optionalString(value, "price");
-  if (type === "LIMIT" && !price) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "price is required for LIMIT orders.");
-  if (type === "MARKET" && price) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "price is not allowed for MARKET orders.");
+function optionalOrderFields(value: Record<string, unknown>): Pick<SpotPlaceOrderParams, "newClientOrderId" | "recvWindow" | "timeInForce"> {
   const timeInForce = optionalString(value, "timeInForce")?.toUpperCase();
   if (timeInForce && !["GTC", "IOC", "FOK"].includes(timeInForce)) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "timeInForce must be GTC, IOC, or FOK.");
+  const recvWindow = optionalString(value, "recvWindow");
   return {
-    symbol: requiredString(value, "symbol"),
-    volume: positiveDecimal(value, "volume"),
-    side: orderSide(value),
-    type,
-    ...(price ? { price } : {}),
-    ...(timeInForce ? { timeInForce: timeInForce as "GTC" | "IOC" | "FOK" } : {}),
     newClientOrderId: clientOrderId(value),
-    ...(optionalString(value, "recvWindow") ? { recvWindow: optionalString(value, "recvWindow") } : {})
+    ...(recvWindow ? { recvWindow } : {}),
+    ...(timeInForce ? { timeInForce: timeInForce as "GTC" | "IOC" | "FOK" } : {})
   };
+}
+
+/** Converts an unambiguous Agent/CLI intent to the legacy OpenAPI volume field. */
+function validateSemanticOrder(input: unknown): SemanticSpotOrder {
+  const value = strictObject(input, ["symbol", "side", "type", "quoteAmount", "baseQuantity", "price", "timeInForce", "newClientOrderId", "recvWindow"]);
+  const side = orderSide(value);
+  const type = orderType(value);
+  const symbol = requiredString(value, "symbol");
+
+  if (type === "MARKET" && side === "BUY") {
+    if (value.baseQuantity !== undefined) {
+      throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "MARKET BUY uses quoteAmount (the amount of quote asset to spend), not baseQuantity.");
+    }
+    if (value.price !== undefined || value.timeInForce !== undefined) {
+      throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "price and timeInForce are not allowed for MARKET orders.");
+    }
+    const quoteAmount = positiveDecimal(value, "quoteAmount");
+    return { symbol, volume: quoteAmount, side, type, intent: "market_buy", quoteAmount, ...optionalOrderFields(value) };
+  }
+
+  if (type === "MARKET" && side === "SELL") {
+    if (value.quoteAmount !== undefined) {
+      throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "MARKET SELL uses baseQuantity (the amount of base asset to sell), not quoteAmount.");
+    }
+    if (value.price !== undefined || value.timeInForce !== undefined) {
+      throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "price and timeInForce are not allowed for MARKET orders.");
+    }
+    const baseQuantity = positiveDecimal(value, "baseQuantity");
+    return { symbol, volume: baseQuantity, side, type, intent: "market_sell", baseQuantity, ...optionalOrderFields(value) };
+  }
+
+  if (value.quoteAmount !== undefined) {
+    throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "LIMIT orders use baseQuantity (the amount of base asset), not quoteAmount.");
+  }
+  const baseQuantity = positiveDecimal(value, "baseQuantity");
+  const price = positiveDecimal(value, "price");
+  return { symbol, volume: baseQuantity, side, type, price, intent: "limit", baseQuantity, ...optionalOrderFields(value) };
+}
+
+function validateMarketBuy(input: unknown): SemanticSpotOrder {
+  const value = strictObject(input, ["symbol", "quoteAmount", "newClientOrderId", "recvWindow"]);
+  return validateSemanticOrder({ ...value, side: "BUY", type: "MARKET" });
+}
+
+function toOpenApiOrder(order: SemanticSpotOrder): SpotPlaceOrderParams {
+  return {
+    symbol: order.symbol,
+    volume: order.volume,
+    side: order.side,
+    type: order.type,
+    newClientOrderId: order.newClientOrderId,
+    ...(order.price ? { price: order.price } : {}),
+    ...(order.timeInForce ? { timeInForce: order.timeInForce } : {}),
+    ...(order.recvWindow ? { recvWindow: order.recvWindow } : {})
+  };
+}
+
+function validateMarketSell(input: unknown): SemanticSpotOrder {
+  const value = strictObject(input, ["symbol", "baseQuantity", "newClientOrderId", "recvWindow"]);
+  return validateSemanticOrder({ ...value, side: "SELL", type: "MARKET" });
+}
+
+function validateLimitOrder(input: unknown): SemanticSpotOrder {
+  const value = strictObject(input, ["symbol", "side", "baseQuantity", "price", "timeInForce", "newClientOrderId", "recvWindow"]);
+  return validateSemanticOrder({ ...value, type: "LIMIT" });
 }
 
 function validateCancelOrder(input: unknown): SpotCancelOrderParams {
@@ -66,30 +131,19 @@ function validateCancelOrder(input: unknown): SpotCancelOrderParams {
 }
 
 function validateTestOrder(input: unknown): Record<string, unknown> {
-  const value = strictObject(input, ["symbol", "volume", "side", "type", "price", "newClientOrderId", "recvWindow"]);
-  const type = orderType(value);
-  const price = optionalString(value, "price");
-  if (type === "LIMIT" && !price) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "price is required for LIMIT orders.");
-  if (type === "MARKET" && price) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "price is not allowed for MARKET orders.");
-  return { symbol: requiredString(value, "symbol"), volume: positiveDecimal(value, "volume"), side: orderSide(value), type, ...(price ? { price } : {}), ...(optionalString(value, "newClientOrderId") ? { newClientOrderId: optionalString(value, "newClientOrderId") } : {}), ...(optionalString(value, "recvWindow") ? { recvWindow: optionalString(value, "recvWindow") } : {}) };
+  return toOpenApiOrder(validateSemanticOrder(input)) as unknown as Record<string, unknown>;
 }
 
 function validateBatchOrders(input: unknown): Record<string, unknown> {
   const value = strictObject(input, ["symbol", "orders"]);
+  const symbol = requiredString(value, "symbol");
   const orders = value.orders;
   if (!Array.isArray(orders) || orders.length < 1 || orders.length > 10) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "orders must contain between 1 and 10 orders.");
-  const normalized = orders.map((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `orders[${index}] must be an object.`);
-    const order = item as Record<string, unknown>;
-    const price = optionalString(order, "price");
-    const volume = positiveDecimal(order, "volume");
-    const side = orderSide(order);
-    const batchType = requiredEnum(order, "batchType", ["LIMIT", "MARKET"] as const);
-    if (batchType === "LIMIT" && !price) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `orders[${index}].price is required for LIMIT.`);
-    if (batchType === "MARKET" && price) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `orders[${index}].price is not allowed for MARKET.`);
-    return { volume, side, batchType, ...(price ? { price } : {}) };
-  });
-  return { symbol: requiredString(value, "symbol"), orders: normalized };
+  return { symbol, orders: orders.map((order, index) => {
+    if (!order || typeof order !== "object" || Array.isArray(order)) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `orders[${index}] must be an object.`);
+    const semantic = validateSemanticOrder({ ...(order as Record<string, unknown>), symbol });
+    return { volume: semantic.volume, side: semantic.side, batchType: semantic.type, ...(semantic.price ? { price: semantic.price } : {}) };
+  }) };
 }
 
 function validateBatchCancel(input: unknown): Record<string, unknown> {
@@ -100,11 +154,41 @@ function validateBatchCancel(input: unknown): Record<string, unknown> {
   return { symbol: requiredString(value, "symbol"), orderIds: value.orderIds.map((id) => (id as string).trim()) };
 }
 
+function semanticOrderSummary(order: SemanticSpotOrder): Record<string, unknown> {
+  return {
+    action: order.intent === "market_buy" ? "market_buy" : order.intent === "market_sell" ? "market_sell" : "limit_order",
+    symbol: order.symbol,
+    side: order.side,
+    type: order.type,
+    ...(order.quoteAmount ? { quoteAmount: order.quoteAmount, amountMeaning: "exact quote-asset amount to spend" } : {}),
+    ...(order.baseQuantity ? { baseQuantity: order.baseQuantity, amountMeaning: "exact base-asset quantity" } : {}),
+    ...(order.price ? { price: order.price } : {}),
+    ...(order.timeInForce ? { timeInForce: order.timeInForce } : {}),
+    newClientOrderId: order.newClientOrderId
+  };
+}
+
+async function preflightSpotOrder(order: SemanticSpotOrder, context: Parameters<NonNullable<ToolSpec<SemanticSpotOrder>["preflight"]>>[1]): Promise<SemanticSpotOrder> {
+  await preflightSymbolOrder(context, order);
+  return order;
+}
+
+async function preflightSpotBatch(input: { symbol: string; orders: Array<{ volume: string; side: "BUY" | "SELL"; batchType: "LIMIT" | "MARKET"; price?: string }> }, context: Parameters<NonNullable<ToolSpec["preflight"]>>[1]): Promise<typeof input> {
+  await Promise.all(input.orders.map((order) => preflightSymbolOrder(context, {
+    symbol: input.symbol,
+    side: order.side,
+    type: order.batchType,
+    ...(order.batchType === "MARKET" && order.side === "BUY" ? { quoteAmount: order.volume } : { baseQuantity: order.volume }),
+    ...(order.price ? { price: order.price } : {})
+  })));
+  return input;
+}
+
 export const orderTools: ToolSpec<any>[] = [
   {
-    name: "spot_test_order", title: "Test Spot Order", description: "Validate one LIMIT or MARKET spot order without sending it to the matching engine.", cliPath: ["spot", "order", "test"],
+    name: "spot_test_order", title: "Test Spot Order", description: "Validate an order without sending it to the matching engine. MARKET BUY requires quoteAmount (quote asset to spend); MARKET SELL and LIMIT require baseQuantity. LIMIT also requires price.", cliPath: ["spot", "order", "test"],
     module: "spot-order", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, volume: { type: "string" }, side: { type: "string", enum: ["BUY", "SELL"] }, type: { type: "string", enum: ["LIMIT", "MARKET"] }, price: { type: "string" }, newClientOrderId: { type: "string" }, recvWindow: { type: "string" } }, required: ["symbol", "volume", "side", "type"], additionalProperties: false }, errorCodes: signedReadErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, side: { type: "string", enum: ["BUY", "SELL"] }, type: { type: "string", enum: ["LIMIT", "MARKET"] }, quoteAmount: { type: "string", description: "Required only for MARKET BUY: exact quote-asset amount to spend." }, baseQuantity: { type: "string", description: "Required for MARKET SELL and LIMIT: exact base-asset quantity." }, price: { type: "string", description: "Required only for LIMIT." }, timeInForce: { type: "string", enum: ["GTC", "IOC", "FOK"] }, newClientOrderId: { type: "string" }, recvWindow: { type: "string" } }, required: ["symbol", "side", "type"], additionalProperties: false }, errorCodes: signedReadErrors,
     validate: validateTestOrder,
     handler: (input, context) => context.api.signedPost("/sapi/v2/order/test", input as Record<string, unknown>, signed(context))
   },
@@ -116,10 +200,11 @@ export const orderTools: ToolSpec<any>[] = [
     handler: (input, context) => context.api.getOrder(input as { symbol: string; orderId: string; newClientOrderId?: string }, signed(context))
   },
   {
-    name: "spot_batch_place_orders", title: "Batch Place Spot Orders", description: "Create up to 10 spot orders after confirmation.", cliPath: ["spot", "order", "batch-place"],
+    name: "spot_batch_place_orders", title: "Batch Place Spot Orders", description: "Create up to 10 spot orders after confirmation. Each MARKET BUY item requires quoteAmount; MARKET SELL and LIMIT items require baseQuantity; LIMIT items also require price.", cliPath: ["spot", "order", "batch-place"],
     module: "spot-order", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, orders: { type: "array" } }, required: ["symbol", "orders"], additionalProperties: false }, errorCodes: writeErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, orders: { type: "array", description: "Items use side/type plus quoteAmount for MARKET BUY, baseQuantity for MARKET SELL/LIMIT, and price for LIMIT." } }, required: ["symbol", "orders"], additionalProperties: false }, errorCodes: writeErrors,
     validate: validateBatchOrders,
+    preflight: preflightSpotBatch,
     handler: (input, context) => context.api.signedPost("/sapi/v2/batchOrders", input as Record<string, unknown>, signed(context)),
     writeSummary: (input) => { const value = input as { symbol: string; orders: unknown[] }; return { action: "batch_place_orders", symbol: value.symbol, orderCount: value.orders.length, orders: value.orders }; }
   },
@@ -132,7 +217,7 @@ export const orderTools: ToolSpec<any>[] = [
     writeSummary: (input) => { const value = input as { symbol: string; orderIds: string[] }; return { action: "batch_cancel_orders", symbol: value.symbol, orderIds: value.orderIds }; }
   },
   {
-    name: "spot_get_open_orders", title: "Get Open Spot Orders", description: "Get current signed spot orders.", cliPath: ["spot", "order", "open"],
+    name: "spot_get_open_orders", title: "Get Spot Open Orders", description: "Get current signed spot orders.", cliPath: ["spot", "order", "open"],
     module: "spot-order", access: "signed", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 1000 } }, additionalProperties: false }, errorCodes: signedReadErrors,
     validate: (input) => { const value = strictObject(input, ["symbol", "limit"]); return { symbol: optionalString(value, "symbol"), limit: optionalInteger(value, "limit", 100, 1, 1000) }; },
@@ -146,12 +231,31 @@ export const orderTools: ToolSpec<any>[] = [
     handler: (input, context) => context.api.getMyTrades(input as { symbol: string; limit?: number; fromId?: string }, signed(context))
   },
   {
-    name: "spot_place_order", title: "Place Spot Order", description: "Create one LIMIT or MARKET spot order after confirmation.", cliPath: ["spot", "order", "place"],
+    name: "spot_market_buy", title: "Market Buy by Quote Amount", description: "Spend an exact quote-asset amount to buy at market. For ETHUSDT, quoteAmount is USDT. Do not use this tool to request a base-asset quantity such as 1 ETH; market execution cannot guarantee an exact base quantity.", cliPath: ["spot", "order", "market-buy"],
     module: "spot-order", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, volume: { type: "string" }, side: { type: "string", enum: ["BUY", "SELL"] }, type: { type: "string", enum: ["LIMIT", "MARKET"] }, price: { type: "string" }, timeInForce: { type: "string", enum: ["GTC", "IOC", "FOK"] }, newClientOrderId: { type: "string" }, recvWindow: { type: "string" } }, required: ["symbol", "volume", "side", "type"], additionalProperties: false }, errorCodes: writeErrors,
-    validate: validatePlaceOrder,
-    handler: (input, context) => context.api.placeOrder(input as SpotPlaceOrderParams, signed(context)),
-    writeSummary: (input) => { const value = input as SpotPlaceOrderParams; return { action: "place_order", symbol: value.symbol, side: value.side, type: value.type, volume: value.volume, price: value.price ?? null, timeInForce: value.timeInForce ?? null, newClientOrderId: value.newClientOrderId }; }
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, quoteAmount: { type: "string", description: "Required exact quote-asset amount to spend, e.g. 100 means spend 100 USDT for ETHUSDT." }, newClientOrderId: { type: "string" }, recvWindow: { type: "string" } }, required: ["symbol", "quoteAmount"], additionalProperties: false }, errorCodes: writeErrors,
+    validate: validateMarketBuy,
+    preflight: preflightSpotOrder,
+    handler: (input, context) => context.api.placeOrder(toOpenApiOrder(input as SemanticSpotOrder), signed(context)),
+    writeSummary: (input) => semanticOrderSummary(input as SemanticSpotOrder)
+  },
+  {
+    name: "spot_market_sell", title: "Market Sell by Base Quantity", description: "Sell an exact base-asset quantity at market. For ETHUSDT, baseQuantity is ETH.", cliPath: ["spot", "order", "market-sell"],
+    module: "spot-order", access: "signed", operation: "write", riskLevel: "high",
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, baseQuantity: { type: "string", description: "Required exact base-asset quantity to sell, e.g. 0.5 means sell 0.5 ETH for ETHUSDT." }, newClientOrderId: { type: "string" }, recvWindow: { type: "string" } }, required: ["symbol", "baseQuantity"], additionalProperties: false }, errorCodes: writeErrors,
+    validate: validateMarketSell,
+    preflight: preflightSpotOrder,
+    handler: (input, context) => context.api.placeOrder(toOpenApiOrder(input as SemanticSpotOrder), signed(context)),
+    writeSummary: (input) => semanticOrderSummary(input as SemanticSpotOrder)
+  },
+  {
+    name: "spot_limit_order", title: "Place Limit Spot Order", description: "Place a LIMIT BUY or SELL using an exact base-asset quantity and a limit price.", cliPath: ["spot", "order", "limit"],
+    module: "spot-order", access: "signed", operation: "write", riskLevel: "high",
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, side: { type: "string", enum: ["BUY", "SELL"] }, baseQuantity: { type: "string", description: "Required exact base-asset quantity." }, price: { type: "string", description: "Required limit price in the quote asset." }, timeInForce: { type: "string", enum: ["GTC", "IOC", "FOK"] }, newClientOrderId: { type: "string" }, recvWindow: { type: "string" } }, required: ["symbol", "side", "baseQuantity", "price"], additionalProperties: false }, errorCodes: writeErrors,
+    validate: validateLimitOrder,
+    preflight: preflightSpotOrder,
+    handler: (input, context) => context.api.placeOrder(toOpenApiOrder(input as SemanticSpotOrder), signed(context)),
+    writeSummary: (input) => semanticOrderSummary(input as SemanticSpotOrder)
   },
   {
     name: "spot_cancel_order", title: "Cancel Spot Order", description: "Cancel one spot order after confirmation.", cliPath: ["spot", "order", "cancel"],

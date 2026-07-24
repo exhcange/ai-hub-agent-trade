@@ -13,8 +13,8 @@ Usage:
   ai-hub config remove --profile <name>
   ai-hub market <ping|time|symbols|ticker|depth|trades|klines> [options]
   ai-hub account <get|transfer|transfer-history> [options]
-  ai-hub spot order <test|get|open|fills|place|cancel|batch-place|batch-cancel> [options]
-  ai-hub margin order <get|open|fills|place|cancel> [options]
+  ai-hub spot order <test|get|open|fills|market-buy|market-sell|limit|cancel|batch-place|batch-cancel> [options]
+  ai-hub margin order <get|open|fills|market-buy|market-sell|limit|cancel> [options]
   ai-hub wallet <transfer|transfer-history|deposit-history|deposit-address|withdraw-address|transferable-assets|exchange-account|withdraw|withdraw-history> [options]
   ai-hub sub-account <list|create|set-trading-status|assets|root-transfer|root-transfer-history|internal-transfer|internal-transfer-history|transfer-to-parent|parent-transfer-history> [options]
   ai-hub sub-account api-key <list|set-ip|delete> [options]
@@ -142,7 +142,7 @@ async function runTool(args: string[], profileName: string | undefined): Promise
     return;
   }
   const executor = new ToolWriteExecutor(registry);
-  const prepared = executor.prepare(tool.name, input, context);
+  const prepared = await executor.prepare(tool.name, input, context);
   const userConfirmation = await approveWrite({ action: prepared.action, summary: prepared.summary, requestHash: prepared.requestHash, expiresAt: prepared.expiresAt });
   if (!userConfirmation) return;
   json(await executor.confirm(prepared.confirmationId, userConfirmation, context));

@@ -65,23 +65,25 @@ export class ToolRegistry {
     return tool.handler(validInput, context);
   }
 
-  public prepareWrite(name: string, input: unknown, context: ToolExecutionContext, confirmations: ConfirmationService): PreparedAction {
+  public async prepareWrite(name: string, input: unknown, context: ToolExecutionContext, confirmations: ConfirmationService): Promise<PreparedAction> {
     const tool = this.byName(name);
     if (tool.operation !== "write" || !tool.writeSummary) throw new AiHubError("AI_HUB_TOOL_NOT_WRITE", `Tool "${name}" is not a confirmable write Tool.`);
     const validInput = tool.validate(input);
+    const preflightInput = tool.preflight ? await tool.preflight(validInput, context) : validInput;
     return confirmations.prepare({
       action: tool.name,
-      payload: validInput,
+      payload: preflightInput,
       context: confirmationContext(context),
-      summary: tool.writeSummary(validInput)
+      summary: tool.writeSummary(preflightInput)
     });
   }
 
   public async executeConfirmed(action: string, payload: Record<string, unknown>, context: ToolExecutionContext): Promise<unknown> {
     const tool = this.byName(action);
     if (tool.operation !== "write") throw new AiHubError("AI_HUB_TOOL_NOT_WRITE", `Tool "${action}" is not a write Tool.`);
-    const validInput = tool.validate(payload);
-    return tool.handler(validInput, context);
+    // The payload was validated and bound to the one-time confirmation during prepareWrite.
+    // Validating it again would re-interpret internal normalized fields and could change intent.
+    return tool.handler(payload as never, context);
   }
 
   public capabilities(context: ToolExecutionContext, options: ToolListOptions = {}): ToolCapability[] {
