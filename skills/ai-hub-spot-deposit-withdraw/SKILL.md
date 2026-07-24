@@ -7,6 +7,8 @@ description: Use this Skill when a user asks about AI Hub wallet assets, deposit
 
 Use this Skill for supported wallet operations. Treat asset balances, addresses, and transaction history as sensitive user data. Do not fabricate an address, network detail, account type, or transfer direction.
 
+Account types are fixed: `1` Spot, `2` Isolated Margin, `3` Cross Margin, `4` C2C, and `5` Derivatives. Account type `2` is never Derivatives. Route a Spot-to-Derivatives request to `ai-hub account transfer` with `EXCHANGE -> FUTURE`. A wallet transfer involving type `2` requires the isolated-margin trading pair in `symbol`.
+
 ## Prerequisites
 
 Read [../_shared/preflight.md](../_shared/preflight.md). Confirm the requested profile and credentials before running any command in this Skill.
@@ -35,11 +37,13 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 
 ## Asset Movement Workflow
 
-1. For a wallet transfer, collect source and destination account types, coin symbol, amount, and optional symbol exactly.
-2. For a withdrawal, collect the withdrawal order ID, coin symbol, amount, exact address, and optional label. Do not infer a label or destination.
-3. Show a plain-language summary before executing the command.
-4. Run the command once. It prints the exact preview.
-5. Stop. The user must enter a new manual `yes` in the interactive terminal. Never enter, pipe, or infer it.
-6. If the write outcome is unknown, query its relevant history before any retry.
+1. For a wallet transfer, collect source and destination account types, coin symbol, amount, and optional symbol exactly. State both the numeric type and its account name in the preview.
+2. If either account type is `2` (Isolated Margin), require `symbol` as the isolated-margin trading pair; it is not a Derivatives identifier.
+3. Do not use wallet account type `2` for a user request that says Derivatives.
+4. For a withdrawal, collect the withdrawal order ID, coin symbol, amount, exact address, and optional label. Do not infer a label or destination.
+5. Show a plain-language summary before executing the command.
+6. Run the command once. It prints the exact preview.
+7. Stop. The user must enter a new manual `yes` in the interactive terminal. Never enter, pipe, or infer it.
+8. If the write outcome is unknown, query its relevant history before any retry.
 
 Read [references/wallet-commands.md](references/wallet-commands.md) for parameters and examples.

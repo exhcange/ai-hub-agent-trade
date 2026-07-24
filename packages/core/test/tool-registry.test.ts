@@ -29,6 +29,44 @@ test("registry applies the same input validation for every adapter", async () =>
   assert.deepEqual(registry.capabilities(context).find((tool) => tool.name === "spot_get_account")?.status, "requires_auth");
 });
 
+test("transfer tools preserve the server's Spot, Margin, C2C, and Derivatives account semantics", async () => {
+  const registry = createToolRegistry();
+  const spotDerivativesTransfer = registry.byName("account_transfer");
+  const universalTransfer = registry.byName("wallet_universal_transfer");
+  const transferableAssets = registry.byName("wallet_get_transferable_assets");
+
+  assert.deepEqual(
+    spotDerivativesTransfer.validate({ coinSymbol: "USDT", amount: "1", fromAccount: "exchange", toAccount: "future" }),
+    { coinSymbol: "USDT", amount: "1", fromAccount: "EXCHANGE", toAccount: "FUTURE" }
+  );
+  assert.throws(
+    () => spotDerivativesTransfer.validate({ coinSymbol: "USDT", amount: "1", fromAccount: "1", toAccount: "2" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT" && error.message.includes("EXCHANGE")
+  );
+  assert.deepEqual(
+    universalTransfer.validate({ coinSymbol: "USDT", amount: "1", fromAccountType: "1", toAccountType: "5" }),
+    { coinSymbol: "USDT", amount: "1", fromAccountType: "1", toAccountType: "5" }
+  );
+  assert.throws(
+    () => universalTransfer.validate({ coinSymbol: "USDT", amount: "1", fromAccountType: "1", toAccountType: "2" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_ISOLATED_MARGIN_SYMBOL_REQUIRED"
+  );
+  assert.deepEqual(
+    universalTransfer.writeSummary?.({ coinSymbol: "USDT", amount: "1", fromAccountType: "1", toAccountType: "5" }),
+    { action: "universal_transfer", fromAccountType: "1", fromAccountTypeName: "Spot", toAccountType: "5", toAccountTypeName: "Derivatives", coinSymbol: "USDT", amount: "1", symbol: null }
+  );
+
+  const context = {
+    profile: { name: "tenant-a", openApiBaseUrl: "https://api.example.com", configVersion: "v1" },
+    credentials: { apiKey: "test-key", secretKey: "test-secret", credentialVersion: "test-version" },
+    api: { signedPost: async () => ({ code: "0", msg: "Success", data: { accountList: [] } }) }
+  } as never;
+  assert.deepEqual(
+    await transferableAssets.handler({ accountType: "5" }, context),
+    { code: "0", msg: "Success", data: { accountList: [] }, accountType: "5", accountTypeName: "Derivatives" }
+  );
+});
+
 test("kline tools expose OpenAPI intervals and normalize safe chart aliases", async () => {
   const registry = createToolRegistry();
   const raw = registry.byName("market_get_klines");
