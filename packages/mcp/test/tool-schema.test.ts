@@ -18,6 +18,12 @@ test("read tools advertise an output schema, including bounded market summaries"
       assert.equal(tool.outputSchema?.type, "object");
       assert.match(tool.description ?? "", /structured as/);
     }
+    const klines = response.tools.find((item) => item.name === "market_get_klines");
+    const klineSummary = response.tools.find((item) => item.name === "market_get_klines_summary");
+    assert.equal(response.tools.some((item) => item.name === "market_get_symbols"), false);
+    assert.match(response.tools.find((item) => item.name === "market_search_symbols")?.description ?? "", /data\.value\.items/);
+    assert.deepEqual((klines?.inputSchema.properties?.interval as { enum?: readonly string[] } | undefined)?.enum, ["1min", "5min", "15min", "30min", "60min", "1day", "1week", "1month"]);
+    assert.deepEqual(klineSummary?.inputSchema.required, ["symbol"]);
   } finally {
     await client.close();
     await server.close();

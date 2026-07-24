@@ -1,7 +1,7 @@
 import { AiHubError } from "../errors.js";
 import type { ToolExecutionContext } from "./tool-spec.js";
 
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 export interface SymbolRule {
   symbol: string;
@@ -14,6 +14,7 @@ export interface SymbolRule {
 
 interface SymbolRuleCacheEntry {
   expiresAt: number;
+  response: unknown;
   rules: Map<string, SymbolRule>;
 }
 
@@ -67,7 +68,7 @@ function parseRules(response: unknown): Map<string, SymbolRule> {
   return result;
 }
 
-async function loadRules(context: ToolExecutionContext): Promise<SymbolRuleCacheEntry> {
+async function loadSnapshot(context: ToolExecutionContext): Promise<SymbolRuleCacheEntry> {
   const key = cacheKey(context);
   const current = cache.get(key);
   if (current && current.expiresAt > Date.now()) return current;
@@ -75,7 +76,7 @@ async function loadRules(context: ToolExecutionContext): Promise<SymbolRuleCache
   if (pending) return pending;
 
   const load = context.api.symbols().then((response) => {
-    const entry = { rules: parseRules(response), expiresAt: Date.now() + CACHE_TTL_MS };
+    const entry = { response, rules: parseRules(response), expiresAt: Date.now() + CACHE_TTL_MS };
     cache.set(key, entry);
     return entry;
   }).finally(() => pendingLoads.delete(key));
@@ -83,9 +84,18 @@ async function loadRules(context: ToolExecutionContext): Promise<SymbolRuleCache
   return load;
 }
 
-/** Lazily fetches and caches one tenant profile's symbol-rule snapshot for five minutes. */
+/**
+ * Lazily fetches and shares one tenant's complete symbol snapshot for five
+ * hour. The symbols endpoint has no upstream filter or pagination, so this
+ * prevents repeated full payload downloads by symbol search and order checks.
+ */
+export async function getCachedSymbols(context: ToolExecutionContext): Promise<unknown> {
+  return (await loadSnapshot(context)).response;
+}
+
+/** Lazily fetches and caches one tenant profile's symbol-rule snapshot for one hour. */
 export async function getSymbolRule(context: ToolExecutionContext, symbol: string): Promise<SymbolRule> {
-  const entry = await loadRules(context);
+  const entry = await loadSnapshot(context);
   const rule = entry.rules.get(normalizedSymbol(symbol));
   if (!rule) throw new AiHubError("AI_HUB_SYMBOL_NOT_FOUND", `Symbol "${symbol}" was not returned by the configured tenant OpenAPI symbols endpoint.`);
   return rule;

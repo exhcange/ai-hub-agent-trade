@@ -39,10 +39,10 @@ MCP clients that support the current protocol also receive the same envelope in 
 
 Use these tools for requests that would otherwise return a broad market payload:
 
-- `market_search_symbols`: bounded symbol search and metadata.
+- `market_search_symbols`: bounded symbol search and metadata. Use this for every MCP symbol lookup; it returns matching rows in `data.value.items`.
 - `market_get_ticker_summary`: watchlist, gainers, losers, and quote-volume leaders.
 - `market_get_depth_summary`: best bid/ask, spread, and up to 20 levels per side.
 - `market_get_trades_summary`: price range, buy/sell statistics, and up to 50 recent trades.
-- `market_get_klines_summary`: period change, high/low, latest candle, and up to 100 candles.
+- `market_get_klines_summary`: period change, high/low, latest candle, and up to 100 candles. It defaults to `60min`; formal intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month`.
 
-The raw symbol, ticker, depth, trades, and kline tools remain available only when an exact full payload is explicitly needed. Raw trades and klines are capped at 100 rows by this client.
+The complete raw symbols endpoint is intentionally CLI-only because its payload is too large for Agent contexts. Raw ticker, depth, trades, and kline tools remain available only when an exact payload is explicitly needed. Raw trades are capped at 100 rows; raw klines support the upstream maximum of 300 rows.

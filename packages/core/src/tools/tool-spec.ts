@@ -29,6 +29,8 @@ export interface ToolSpec<Input = Record<string, unknown>> {
   access: ToolAccess;
   operation: ToolOperation;
   riskLevel: ToolRiskLevel;
+  /** Whether this Tool is advertised to local MCP clients. CLI availability is controlled by cliPath. */
+  mcpVisible?: boolean;
   inputSchema: JsonSchema;
   errorCodes: readonly string[];
   validate(input: unknown): Input;

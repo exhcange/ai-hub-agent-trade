@@ -14,8 +14,8 @@ All commands are read-only and use the OpenAPI URL from the selected local profi
 | `ai-hub market depth-summary` | `--symbol` | `--limit` (1–20), `--profile` |
 | `ai-hub market trades` | `--symbol` | `--limit` (1–100), `--profile` |
 | `ai-hub market trades-summary` | `--symbol` | `--limit` (1–50), `--profile` |
-| `ai-hub market klines` | `--symbol`, `--interval` | `--start-time`, `--end-time`, `--timezone`, `--limit` (1–100), `--profile` |
-| `ai-hub market klines-summary` | `--symbol`, `--interval` | `--start-time`, `--end-time`, `--timezone`, `--limit` (1–100), `--profile` |
+| `ai-hub market klines` | `--symbol`, `--interval` | `--start-time`, `--end-time`, `--timezone`, `--limit` (1–300), `--profile` |
+| `ai-hub market klines-summary` | `--symbol` | `--interval` (defaults to `60min`), `--start-time`, `--end-time`, `--timezone`, `--limit` (1–100), `--profile` |
 
 Examples:
 
@@ -27,5 +27,14 @@ ai-hub market depth-summary --symbol BTCUSDT --limit 10
 ai-hub market trades-summary --symbol BTCUSDT --limit 20
 ai-hub market klines-summary --symbol BTCUSDT --interval 60min --limit 20
 ```
+
+## Kline parameter rules
+
+- `symbol` is required. Both `ETHUSDT` and `ETH/USDT` are accepted.
+- Supported `--interval` values are exactly `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month`. Use `60min`, not `1h`.
+- CLI accepts common aliases (`1h`, `1d`, `1w`, and minute shorthand) and normalizes them before calling OpenAPI. Unsupported periods such as `4h` fail locally with `AI_HUB_INVALID_ARGUMENT`.
+- `--start-time` and `--end-time` are inclusive Unix timestamps in milliseconds. `start-time` cannot be after `end-time`.
+- `--timezone` is optional (`UTC+08` by default); daily, weekly, and monthly data may vary by timezone.
+- The upstream API returns newest-first candles and supports at most 300 raw rows. The summary command is deliberately limited to 100.
 
 Do not guess the symbol format. Use `ai-hub market symbols-search --query <asset>` first when the user has not provided an exact supported symbol. Use `symbols` only when complete raw symbol metadata is explicitly needed.

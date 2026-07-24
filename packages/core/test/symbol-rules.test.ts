@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AiHubError, clearSymbolRuleCache, getSymbolRule, preflightSymbolOrder, type ToolExecutionContext } from "../src/index.js";
+import { AiHubError, clearSymbolRuleCache, getCachedSymbols, getSymbolRule, preflightSymbolOrder, type ToolExecutionContext } from "../src/index.js";
 
 test("lazily loads one profile's symbol rules once and validates BTCUSDT precision", async () => {
   clearSymbolRuleCache();
@@ -15,9 +15,11 @@ test("lazily loads one profile's symbol rules once and validates BTCUSDT precisi
     }
   } as unknown as ToolExecutionContext;
 
+  const snapshot = await getCachedSymbols(context);
   const first = await getSymbolRule(context, "BTC/USDT");
   const second = await getSymbolRule(context, "btcusdt");
   assert.equal(calls, 1);
+  assert.deepEqual(snapshot, { symbols: [{ symbol: "BTCUSDT", quantityPrecision: 5, pricePrecision: 2, limitVolumeMin: "0.00002", limitAmountMin: "0", limitPriceMin: "0.01" }] });
   assert.equal(first.quantityPrecision, 5);
   assert.equal(first.pricePrecision, 2);
   assert.equal(second.limitVolumeMin, "0.00002");

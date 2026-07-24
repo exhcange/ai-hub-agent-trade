@@ -7,6 +7,7 @@ test("registry is the unique source for CLI paths and read-only visibility", () 
   const tools = registry.list({ readOnly: true });
   assert.ok(tools.length >= 29);
   assert.equal(registry.byCliPath(["market", "depth"]).name, "market_get_depth");
+  assert.equal(registry.byName("market_get_symbols").mcpVisible, false);
   assert.equal(registry.byCliPath(["account", "get"]).name, "spot_get_account");
   assert.equal(registry.byCliPath(["margin", "order", "get"]).name, "margin_get_order");
   assert.equal(registry.byCliPath(["wallet", "deposit-history"]).name, "wallet_get_deposit_history");
@@ -26,6 +27,34 @@ test("registry applies the same input validation for every adapter", async () =>
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
   );
   assert.deepEqual(registry.capabilities(context).find((tool) => tool.name === "spot_get_account")?.status, "requires_auth");
+});
+
+test("kline tools expose OpenAPI intervals and normalize safe chart aliases", async () => {
+  const registry = createToolRegistry();
+  const raw = registry.byName("market_get_klines");
+  const summary = registry.byName("market_get_klines_summary");
+  const rawInterval = raw.inputSchema.properties?.interval as { enum?: readonly string[] };
+  assert.deepEqual(rawInterval.enum, ["1min", "5min", "15min", "30min", "60min", "1day", "1week", "1month"]);
+  assert.deepEqual(summary.inputSchema.required, ["symbol"]);
+
+  let received: unknown;
+  const context = {
+    profile: { name: "tenant-a", openApiBaseUrl: "https://api.example.com", configVersion: "v1" },
+    api: { klines: async (input: unknown) => { received = input; return []; } }
+  } as never;
+  await registry.execute("market_get_klines", { symbol: "ETH/USDT", interval: "1h", limit: 300 }, context);
+  assert.deepEqual(received, { symbol: "ETH/USDT", interval: "60min", startTime: undefined, endTime: undefined, timezone: undefined, limit: 300 });
+
+  await registry.execute("market_get_klines_summary", { symbol: "ETHUSDT" }, context);
+  assert.deepEqual(received, { symbol: "ETHUSDT", interval: "60min", startTime: undefined, endTime: undefined, timezone: undefined, limit: 20 });
+  await assert.rejects(
+    registry.execute("market_get_klines", { symbol: "ETHUSDT", interval: "4h" }, context),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT" && error.message.includes("60min")
+  );
+  await assert.rejects(
+    registry.execute("market_get_klines", { symbol: "ETHUSDT", interval: "60min", startTime: 2, endTime: 1 }, context),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT" && error.message.includes("startTime")
+  );
 });
 
 test("registry contains every migrated non-derivatives API capability", () => {

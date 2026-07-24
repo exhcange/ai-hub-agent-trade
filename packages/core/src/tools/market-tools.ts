@@ -2,8 +2,64 @@ import { AiHubError } from "../errors.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalInteger, optionalString, requiredString, strictObject } from "./validation.js";
 import { summarizeDepth, summarizeKlines, summarizeSymbols, summarizeTickers, summarizeTrades } from "./market-summaries.js";
+import { getCachedSymbols } from "./symbol-rules.js";
 
 const readErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
+
+/**
+ * The exact values consumed by the OpenAPI kline Redis keys. Do not send
+ * conventional chart aliases (for example `1h`) to the upstream API: it
+ * treats an unknown interval as a different key and returns an empty array.
+ */
+export const KLINE_INTERVALS = ["1min", "5min", "15min", "30min", "60min", "1day", "1week", "1month"] as const;
+type KlineInterval = (typeof KLINE_INTERVALS)[number];
+
+const KLINE_INTERVAL_ALIASES: Readonly<Record<string, KlineInterval>> = {
+  "1m": "1min",
+  "5m": "5min",
+  "15m": "15min",
+  "30m": "30min",
+  "60m": "60min",
+  "1h": "60min",
+  "1d": "1day",
+  "1w": "1week",
+  "1mo": "1month",
+  "1M": "1month"
+};
+
+const klineIntervalDescription = "Kline interval. Supported values: 1min, 5min, 15min, 30min, 60min, 1day, 1week, 1month. Use 60min, not 1h.";
+const klineTimezoneDescription = "Optional timezone such as UTC+08 or UTC-09. Defaults to UTC+08. The upstream API applies timezone-specific data only to periods above 60min.";
+
+function normalizeKlineInterval(value: string): KlineInterval {
+  const trimmed = value.trim();
+  const normalized = KLINE_INTERVAL_ALIASES[trimmed] ?? trimmed.toLowerCase();
+  if ((KLINE_INTERVALS as readonly string[]).includes(normalized)) return normalized as KlineInterval;
+  throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `interval must be one of: ${KLINE_INTERVALS.join(", ")}. Use 60min, not 1h.`);
+}
+
+function validateKlineInput(input: unknown, options: { summary: boolean }): {
+  symbol: string;
+  interval: KlineInterval;
+  startTime?: number;
+  endTime?: number;
+  timezone?: string;
+  limit: number;
+} {
+  const value = strictObject(input, ["symbol", "interval", "startTime", "endTime", "timezone", "limit"]);
+  const startTime = value.startTime === undefined ? undefined : optionalInteger(value, "startTime", 0, 0, Number.MAX_SAFE_INTEGER);
+  const endTime = value.endTime === undefined ? undefined : optionalInteger(value, "endTime", 0, 0, Number.MAX_SAFE_INTEGER);
+  if (startTime !== undefined && endTime !== undefined && startTime > endTime) {
+    throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "startTime must be less than or equal to endTime.");
+  }
+  return {
+    symbol: requiredString(value, "symbol"),
+    interval: value.interval === undefined && options.summary ? "60min" : normalizeKlineInterval(requiredString(value, "interval")),
+    startTime,
+    endTime,
+    timezone: optionalString(value, "timezone"),
+    limit: optionalInteger(value, "limit", options.summary ? 20 : 50, 1, options.summary ? 100 : 300)
+  };
+}
 
 export const marketTools: ToolSpec[] = [
   {
@@ -30,15 +86,16 @@ export const marketTools: ToolSpec[] = [
     description: "Get complete spot symbol metadata from the configured tenant OpenAPI. Use market_search_symbols for browsing or filtering, because this response may be large.",
     cliPath: ["market", "symbols"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    mcpVisible: false,
     inputSchema: { type: "object", additionalProperties: false },
     errorCodes: readErrors,
     validate: (input) => strictObject(input, []),
-    handler: (_input, context) => context.api.symbols()
+    handler: (_input, context) => getCachedSymbols(context)
   },
   {
     name: "market_search_symbols",
     title: "Search Spot Symbols",
-    description: "Search the configured tenant's spot symbols and return a bounded metadata result. Use this instead of market_get_symbols unless complete raw metadata is explicitly required.",
+    description: "Search the configured tenant's spot symbols and return a bounded metadata result. In MCP, matching rows are at data.value.items. Use this instead of market_get_symbols unless complete raw metadata is explicitly required.",
     cliPath: ["market", "symbols-search"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { query: { type: "string" }, quoteAsset: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 50 } }, additionalProperties: false },
@@ -49,7 +106,7 @@ export const marketTools: ToolSpec[] = [
     },
     handler: async (input, context) => {
       const value = input as { query?: string; quoteAsset?: string; limit: number };
-      return summarizeSymbols(await context.api.symbols(), value);
+      return summarizeSymbols(await getCachedSymbols(context), value);
     }
   },
   {
@@ -157,32 +214,26 @@ export const marketTools: ToolSpec[] = [
   {
     name: "market_get_klines",
     title: "Get Spot Klines",
-    description: "Get spot candlestick data for one symbol and interval.",
+    description: "Get raw spot candlestick data for one symbol and a supported interval. Use market_get_klines_summary for Agent analysis.",
     cliPath: ["market", "klines"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, interval: { type: "string" }, startTime: { type: "integer" }, endTime: { type: "integer" }, timezone: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 } }, required: ["symbol", "interval"], additionalProperties: false },
+    inputSchema: { type: "object", properties: { symbol: { type: "string", description: "Spot symbol, for example ETHUSDT or ETH/USDT." }, interval: { type: "string", enum: KLINE_INTERVALS, description: klineIntervalDescription }, startTime: { type: "integer", description: "Optional inclusive Unix timestamp in milliseconds." }, endTime: { type: "integer", description: "Optional inclusive Unix timestamp in milliseconds." }, timezone: { type: "string", description: klineTimezoneDescription }, limit: { type: "integer", minimum: 1, maximum: 300, description: "Number of newest-first candles. The upstream maximum is 300." } }, required: ["symbol", "interval"], additionalProperties: false },
     errorCodes: readErrors,
     validate: (input) => {
-      const value = strictObject(input, ["symbol", "interval", "startTime", "endTime", "timezone", "limit"]);
-      const startTime = value.startTime === undefined ? undefined : optionalInteger(value, "startTime", 0, 0, Number.MAX_SAFE_INTEGER);
-      const endTime = value.endTime === undefined ? undefined : optionalInteger(value, "endTime", 0, 0, Number.MAX_SAFE_INTEGER);
-      return { symbol: requiredString(value, "symbol"), interval: requiredString(value, "interval"), startTime, endTime, timezone: optionalString(value, "timezone"), limit: optionalInteger(value, "limit", 50, 1, 100) };
+      return validateKlineInput(input, { summary: false });
     },
     handler: (input, context) => context.api.klines(input as { symbol: string; interval: string; startTime?: number; endTime?: number; timezone?: string; limit?: number })
   },
   {
     name: "market_get_klines_summary",
     title: "Get Spot Klines Summary",
-    description: "Get a bounded candle analysis with period change, high/low, latest candle, and a caller-limited candle sample. Prefer this to market_get_klines for Agent analysis.",
+    description: "Get a bounded candle analysis with period change, high/low, latest candle, and a caller-limited candle sample. Defaults to 60min. Prefer this to market_get_klines for Agent analysis.",
     cliPath: ["market", "klines-summary"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, interval: { type: "string" }, startTime: { type: "integer" }, endTime: { type: "integer" }, timezone: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 } }, required: ["symbol", "interval"], additionalProperties: false },
+    inputSchema: { type: "object", properties: { symbol: { type: "string", description: "Spot symbol, for example ETHUSDT or ETH/USDT." }, interval: { type: "string", enum: KLINE_INTERVALS, description: `${klineIntervalDescription} Defaults to 60min when omitted.` }, startTime: { type: "integer", description: "Optional inclusive Unix timestamp in milliseconds." }, endTime: { type: "integer", description: "Optional inclusive Unix timestamp in milliseconds." }, timezone: { type: "string", description: klineTimezoneDescription }, limit: { type: "integer", minimum: 1, maximum: 100, description: "Number of candles included in the bounded analysis." } }, required: ["symbol"], additionalProperties: false },
     errorCodes: readErrors,
     validate: (input) => {
-      const value = strictObject(input, ["symbol", "interval", "startTime", "endTime", "timezone", "limit"]);
-      const startTime = value.startTime === undefined ? undefined : optionalInteger(value, "startTime", 0, 0, Number.MAX_SAFE_INTEGER);
-      const endTime = value.endTime === undefined ? undefined : optionalInteger(value, "endTime", 0, 0, Number.MAX_SAFE_INTEGER);
-      return { symbol: requiredString(value, "symbol"), interval: requiredString(value, "interval"), startTime, endTime, timezone: optionalString(value, "timezone"), limit: optionalInteger(value, "limit", 20, 1, 100) };
+      return validateKlineInput(input, { summary: true });
     },
     handler: async (input, context) => {
       const value = input as { symbol: string; interval: string; startTime?: number; endTime?: number; timezone?: string; limit: number };

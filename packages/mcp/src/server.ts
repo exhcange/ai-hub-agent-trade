@@ -66,6 +66,10 @@ function toMcpTool(tool: ToolSpec): Tool {
   };
 }
 
+function isMcpVisible(tool: ToolSpec): boolean {
+  return tool.mcpVisible !== false;
+}
+
 function prepareToolName(tool: ToolSpec): string {
   const [prefix, ...rest] = tool.name.split("_");
   return `${prefix ?? "spot"}_prepare_${rest.join("_")}`;
@@ -86,10 +90,10 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
   const registry = createToolRegistry();
   const writeExecutor = new ToolWriteExecutor(registry);
   const server = new Server(
-    { name: "ai-hub-agent-trade", version: "0.1.6" },
+    { name: "ai-hub-agent-trade", version: "0.1.7" },
     {
       capabilities: { tools: {} },
-      instructions: "Every successful read-tool response provides both JSON text and MCP structuredContent in the envelope { ok: true, data: ... }. All read-tool data is normalized: dataType=array means use data.items and data.count; dataType=object or scalar means use data.value; dataType=null means no value. Inspect data.dataType before formatting and never assume undocumented nested keys. For broad market questions, call market_search_symbols, market_get_ticker_summary, market_get_depth_summary, market_get_trades_summary, or market_get_klines_summary instead of fetching large raw payloads. Prepare/confirm tools return their documented action payload directly in data. For every state-changing action, call only a spot_prepare_* or margin_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message. For spot and margin orders, MARKET BUY always uses quoteAmount (the quote asset to spend); MARKET SELL uses baseQuantity (the base asset to sell). Never reinterpret a requested base quantity as quoteAmount."
+      instructions: "Every successful read-tool response provides both JSON text and MCP structuredContent in the envelope { ok: true, data: ... }. All read-tool data is normalized: dataType=array means use data.items and data.count; dataType=object or scalar means use data.value; dataType=null means no value. Inspect data.dataType before formatting and never assume undocumented nested keys. For symbol lookup, use market_search_symbols. It returns an object whose bounded matches are at data.value.items; the complete raw symbols payload is intentionally unavailable in MCP. For broad market questions, call market_get_ticker_summary, market_get_depth_summary, market_get_trades_summary, or market_get_klines_summary instead of fetching large raw payloads. Prepare/confirm tools return their documented action payload directly in data. For every state-changing action, call only a spot_prepare_* or margin_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message. For spot and margin orders, MARKET BUY always uses quoteAmount (the quote asset to spend); MARKET SELL uses baseQuantity (the base asset to sell). Never reinterpret a requested base quantity as quoteAmount."
     }
   );
 
@@ -102,7 +106,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
         inputSchema: { type: "object", additionalProperties: false },
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
       },
-      ...registry.list({ readOnly }).flatMap((tool) => tool.operation === "write" ? [toPrepareMcpTool(tool)] : [toMcpTool(tool)]),
+      ...registry.list({ readOnly }).filter(isMcpVisible).flatMap((tool) => tool.operation === "write" ? [toPrepareMcpTool(tool)] : [toMcpTool(tool)]),
       ...(readOnly ? [] : [{
         name: CONFIRM_ACTION_TOOL,
         title: "Confirm Prepared Action",
@@ -122,7 +126,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
           data: {
             profile: { name: context.profile.name, host: new URL(context.profile.openApiBaseUrl).host, configVersion: context.profile.configVersion },
             readOnly,
-            capabilities: registry.capabilities(context, { readOnly })
+            capabilities: registry.capabilities(context, { readOnly }).filter((capability) => isMcpVisible(registry.byName(capability.name)))
           }
         });
       }
@@ -136,6 +140,10 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
       const preparedTool = registry.list({ readOnly: false }).find((tool) => tool.operation === "write" && prepareToolName(tool) === request.params.name);
       if (preparedTool) {
         return result({ ok: true, data: await writeExecutor.prepare(preparedTool.name, request.params.arguments ?? {}, context) });
+      }
+      const tool = registry.byName(request.params.name, { readOnly });
+      if (!isMcpVisible(tool)) {
+        throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Tool "${request.params.name}" is not available through MCP. Use market_search_symbols for symbol lookup.`);
       }
       const data = await registry.execute(request.params.name, request.params.arguments ?? {}, context, { readOnly });
       return toMcpReadResult(formatMcpData(data));

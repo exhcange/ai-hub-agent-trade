@@ -37,4 +37,4 @@ Before an order preview is created, the CLI lazily loads `/sapi/v2/symbols` once
 
 ## Bounded market analysis
 
-For broad market requests, use `ai-hub market symbols-search`, `ticker-summary`, `depth-summary`, `trades-summary`, or `klines-summary`. These commands return Agent-friendly bounded results instead of complete market payloads. Raw trades and klines are capped at 100 rows.
+For broad market requests, use `ai-hub market symbols-search`, `ticker-summary`, `depth-summary`, `trades-summary`, or `klines-summary`. These commands return Agent-friendly bounded results instead of complete market payloads. Raw trades are capped at 100 rows; raw klines support up to 300 rows. Kline intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month` (`60min`, not `1h`).
