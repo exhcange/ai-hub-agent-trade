@@ -1,0 +1,59 @@
+name: Publish npm packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to publish
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - cli
+          - mcp
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.package }}
+    if: ${{ inputs.package == 'all' || inputs.package == matrix.selector }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: CLI
+            selector: cli
+            directory: cli
+          - package: MCP
+            selector: mcp
+            directory: mcp
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify source
+        run: pnpm release-check
+
+      - name: Use npm with trusted publishing support
+        run: npm install --global npm@11.5.1
+
+      - name: Publish to npm
+        working-directory: packages/${{ matrix.directory }}
+        run: npm publish --access public --provenance
