@@ -31,5 +31,5 @@ test("spot-order Skill documents the Core CLI command and unit agreement", async
   assert.match(reference, /--base-quantity/);
   assert.doesNotMatch(reference, /spot order place/);
   assert.doesNotMatch(reference, /--volume/);
-  assert.match(skill, new RegExp(`version: ${JSON.parse(cliPackage).version}`));
+  assert.match(skill, new RegExp(`version: "${JSON.parse(cliPackage).version}"`));
 });
