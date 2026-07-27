@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean --target node20",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts",
+    "test": "AI_HUB_DISABLE_PERSISTENT_CACHE=1 tsx --test test/*.test.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

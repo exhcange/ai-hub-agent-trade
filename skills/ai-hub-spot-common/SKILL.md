@@ -18,7 +18,10 @@ Confirm that the requested profile has the intended OpenAPI URL. Read [../_share
 | `ai-hub market ping` | Test the configured OpenAPI connection. |
 | `ai-hub market time` | Get server time. |
 | `ai-hub market symbols` | List supported spot symbols. |
-| `ai-hub market symbols-search` | Search symbols with a bounded metadata result. |
+| `ai-hub market symbols-overview` | Get a small generic overview: counts and sample symbols. |
+| `ai-hub market symbols-list` | Browse a bounded page, optionally by quote asset. |
+| `ai-hub market symbols-search` | Search by a required keyword without trading-rule metadata. |
+| `ai-hub market symbol-info` | Get precision and minimum rules for one exact symbol. |
 | `ai-hub market ticker` | Get exact ticker data for an explicitly requested symbol or symbol list. |
 | `ai-hub market ticker-summary` | Get a bounded market overview, movers, and volume leaders. |
 | `ai-hub market depth-summary` | Get best bid/ask, spread, and bounded book levels. |
@@ -30,7 +33,7 @@ Confirm that the requested profile has the intended OpenAPI URL. Read [../_share
 
 ## Operating Flow
 
-1. For broad market questions, use a `*-summary` command or `symbols-search`; do not request a large raw payload.
+1. For a generic symbol-list request, use `symbols-overview`; for quote-asset browsing, use `symbols-list`; for a keyword, use `symbols-search`; and use `symbol-info` only for an exact symbol's trading rules. Do not request a large raw payload.
 2. Identify the symbol and interval or limit when the command needs them.
 3. Execute the read-only command immediately.
 4. State whether the result is a bounded summary or raw market data and avoid presenting it as investment advice.

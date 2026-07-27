@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AiHubError, createToolRegistry } from "../src/index.js";
-import { summarizeDepth, summarizeKlines, summarizeSymbols, summarizeTickers, summarizeTrades } from "../src/tools/market-summaries.js";
+import { getSymbolInfo, listSymbols, searchSymbols, summarizeDepth, summarizeKlines, summarizeSymbolOverview, summarizeTickers, summarizeTrades } from "../src/tools/market-summaries.js";
 
 test("ticker summary returns only the requested quote asset and bounded leaderboards", () => {
   const summary = summarizeTickers([
@@ -18,14 +18,33 @@ test("ticker summary returns only the requested quote asset and bounded leaderbo
   assert.equal((summary.topByQuoteVolume as unknown[]).length, 2);
 });
 
-test("symbol, depth, trades, and kline summaries follow the actual OpenAPI payload shapes", () => {
-  const symbols = summarizeSymbols({ symbols: [
+test("symbol browse, search, and exact-info responses are intentionally separate and bounded", () => {
+  const source = { symbols: [
     { symbol: "btcusdt", SymbolName: "BTC/USDT", baseAsset: "BTC", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 5, limitVolumeMin: "0.00001", limitPriceMin: "0.01", limitAmountMin: "0" },
-    { symbol: "ethusdc", SymbolName: "ETH/USDC", baseAsset: "ETH", quoteAsset: "USDC", pricePrecision: 2, quantityPrecision: 4, limitVolumeMin: "0.001", limitPriceMin: "0.01", limitAmountMin: "0" }
-  ] }, { query: "BTC", limit: 20 });
-  assert.equal(symbols.totalSymbols, 2);
+    { symbol: "ethusdc", SymbolName: "ETH/USDC", baseAsset: "ETH", quoteAsset: "USDC", pricePrecision: 2, quantityPrecision: 4, limitVolumeMin: "0.001", limitPriceMin: "0.01", limitAmountMin: "0" },
+    { symbol: "ethusdt", SymbolName: "ETH/USDT", baseAsset: "ETH", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 4, limitVolumeMin: "0.001", limitPriceMin: "0.01", limitAmountMin: "0" }
+  ] };
+  const overview = summarizeSymbolOverview(source, { limit: 2 });
+  assert.equal(overview.totalSymbols, 3);
+  assert.deepEqual(overview.sampleSymbols, ["BTC/USDT", "ETH/USDC"]);
+  assert.deepEqual(overview.quoteAssetCounts, [{ asset: "USDT", count: 2 }, { asset: "USDC", count: 1 }]);
+
+  const list = listSymbols(source, { quoteAsset: "USDT", offset: 1, limit: 1 });
+  assert.equal(list.matchedSymbols, 2);
+  assert.equal(list.nextOffset, null);
+  assert.deepEqual(list.items, [{ symbol: "ETH/USDT", apiSymbol: "ethusdt", baseAsset: "ETH", quoteAsset: "USDT" }]);
+
+  const symbols = searchSymbols(source, { query: "BTC", limit: 20 });
   assert.equal(symbols.matchedSymbols, 1);
-  assert.deepEqual(symbols.items, [{ symbol: "BTC/USDT", apiSymbol: "btcusdt", baseAsset: "BTC", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 5, limitVolumeMin: "0.00001", limitPriceMin: "0.01", limitAmountMin: "0" }]);
+  assert.deepEqual(symbols.items, [{ symbol: "BTC/USDT", apiSymbol: "btcusdt", baseAsset: "BTC", quoteAsset: "USDT" }]);
+  assert.equal("pricePrecision" in ((symbols.items as Record<string, unknown>[])[0] ?? {}), false);
+
+  assert.deepEqual(getSymbolInfo(source, "BTCUSDT"), {
+    symbol: "BTC/USDT", apiSymbol: "btcusdt", baseAsset: "BTC", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 5, limitVolumeMin: "0.00001", limitPriceMin: "0.01", limitAmountMin: "0"
+  });
+});
+
+test("depth, trades, and kline summaries follow the actual OpenAPI payload shapes", () => {
 
   const depth = summarizeDepth({ time: 10, bids: [["100", "2"]], asks: [["101", "3"]] }, "BTC/USDT");
   assert.deepEqual(depth.bestBid, { price: "100", quantity: "2" });
@@ -53,9 +72,14 @@ test("symbol, depth, trades, and kline summaries follow the actual OpenAPI paylo
 
 test("registry exposes bounded market tools and keeps unfiltered ticker requests out of the raw tool", () => {
   const registry = createToolRegistry();
-  for (const name of ["market_search_symbols", "market_get_ticker_summary", "market_get_depth_summary", "market_get_trades_summary", "market_get_klines_summary"]) {
+  for (const name of ["market_get_symbol_overview", "market_list_symbols", "market_search_symbols", "market_get_symbol_info", "market_get_ticker_summary", "market_get_depth_summary", "market_get_trades_summary", "market_get_klines_summary"]) {
     assert.equal(registry.byName(name).operation, "read");
   }
+  assert.throws(
+    () => registry.byName("market_search_symbols").validate({}),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
+  assert.equal((registry.byName("market_search_symbols").validate({ query: "BTC" }) as { limit: number }).limit, 10);
   assert.throws(
     () => registry.byName("market_get_ticker").validate({}),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"

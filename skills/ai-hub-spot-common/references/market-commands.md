@@ -7,7 +7,10 @@ All commands are read-only and use the OpenAPI URL from the selected local profi
 | `ai-hub market ping` | None | `--profile` |
 | `ai-hub market time` | None | `--profile` |
 | `ai-hub market symbols` | None | `--profile` |
-| `ai-hub market symbols-search` | None | `--query`, `--quote-asset`, `--limit` (1–50), `--profile` |
+| `ai-hub market symbols-overview` | None | `--limit` (1–20), `--profile` |
+| `ai-hub market symbols-list` | None | `--quote-asset`, `--offset`, `--limit` (1–50), `--profile` |
+| `ai-hub market symbols-search` | `--query` | `--quote-asset`, `--limit` (1–20), `--profile` |
+| `ai-hub market symbol-info` | `--symbol` | `--profile` |
 | `ai-hub market ticker` | `--symbol` or `--symbols` | `--time-zone`, `--profile` |
 | `ai-hub market ticker-summary` | None | `--quote-asset`, `--limit` (1–20), `--profile` |
 | `ai-hub market depth` | `--symbol` | `--limit` (1–100), `--profile` |
@@ -21,6 +24,10 @@ Examples:
 
 ```bash
 ai-hub market ping --profile default
+ai-hub market symbols-overview --limit 12
+ai-hub market symbols-list --quote-asset USDT --offset 0 --limit 20
+ai-hub market symbols-search --query BTC
+ai-hub market symbol-info --symbol BTCUSDT
 ai-hub market ticker --symbol BTCUSDT
 ai-hub market ticker-summary --quote-asset USDT --limit 5
 ai-hub market depth-summary --symbol BTCUSDT --limit 10
@@ -37,4 +44,4 @@ ai-hub market klines-summary --symbol BTCUSDT --interval 60min --limit 20
 - `--timezone` is optional (`UTC+08` by default); daily, weekly, and monthly data may vary by timezone.
 - The upstream API returns newest-first candles and supports at most 300 raw rows. The summary command is deliberately limited to 100.
 
-Do not guess the symbol format. Use `ai-hub market symbols-search --query <asset>` first when the user has not provided an exact supported symbol. Use `symbols` only when complete raw symbol metadata is explicitly needed.
+For a generic pair list, use `ai-hub market symbols-overview` first. Use `symbols-list` for a paged quote-asset list, `symbols-search --query <asset>` for a keyword lookup, and `symbol-info` only when the exact symbol's precision or minimum rules are needed. Use `symbols` only when complete raw symbol metadata is explicitly needed.

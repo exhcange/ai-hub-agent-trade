@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { AiHubError } from "../errors.js";
 import type { ToolExecutionContext } from "./tool-spec.js";
 
@@ -23,6 +27,52 @@ const pendingLoads = new Map<string, Promise<SymbolRuleCacheEntry>>();
 
 function cacheKey(context: ToolExecutionContext): string {
   return `${context.profile.name}\u0000${context.profile.configVersion}\u0000${context.profile.openApiBaseUrl}`;
+}
+
+function persistentCacheEnabled(): boolean {
+  return process.env.AI_HUB_DISABLE_PERSISTENT_CACHE !== "1";
+}
+
+function persistentCacheDirectory(): string {
+  return process.env.AI_HUB_CACHE_DIR ?? join(homedir(), ".ai-hub", "cache");
+}
+
+function persistentCachePath(key: string): string {
+  const hash = createHash("sha256").update(key).digest("hex");
+  return join(persistentCacheDirectory(), `symbols-${hash}.json`);
+}
+
+interface PersistedSymbolSnapshot {
+  expiresAt: number;
+  response: unknown;
+}
+
+async function loadPersistentSnapshot(key: string): Promise<SymbolRuleCacheEntry | undefined> {
+  if (!persistentCacheEnabled()) return undefined;
+  try {
+    const parsed = JSON.parse(await readFile(persistentCachePath(key), "utf8")) as Partial<PersistedSymbolSnapshot>;
+    if (typeof parsed.expiresAt !== "number" || !Number.isFinite(parsed.expiresAt) || parsed.expiresAt <= Date.now() || !("response" in parsed)) return undefined;
+    return { expiresAt: parsed.expiresAt, response: parsed.response, rules: parseRules(parsed.response) };
+  } catch {
+    return undefined;
+  }
+}
+
+async function persistSnapshot(key: string, entry: SymbolRuleCacheEntry): Promise<void> {
+  if (!persistentCacheEnabled()) return;
+  const directory = persistentCacheDirectory();
+  const filePath = persistentCachePath(key);
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await chmod(directory, 0o700);
+    await writeFile(temporaryPath, JSON.stringify({ expiresAt: entry.expiresAt, response: entry.response }), { mode: 0o600 });
+    await chmod(temporaryPath, 0o600);
+    await rename(temporaryPath, filePath);
+    await chmod(filePath, 0o600);
+  } catch {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
 }
 
 function normalizedSymbol(symbol: string): string {
@@ -75,17 +125,24 @@ async function loadSnapshot(context: ToolExecutionContext): Promise<SymbolRuleCa
   const pending = pendingLoads.get(key);
   if (pending) return pending;
 
-  const load = context.api.symbols().then((response) => {
+  const load = (async (): Promise<SymbolRuleCacheEntry> => {
+    const persisted = await loadPersistentSnapshot(key);
+    if (persisted) {
+      cache.set(key, persisted);
+      return persisted;
+    }
+    const response = await context.api.symbols();
     const entry = { response, rules: parseRules(response), expiresAt: Date.now() + CACHE_TTL_MS };
     cache.set(key, entry);
+    await persistSnapshot(key, entry);
     return entry;
-  }).finally(() => pendingLoads.delete(key));
+  })().finally(() => pendingLoads.delete(key));
   pendingLoads.set(key, load);
   return load;
 }
 
 /**
- * Lazily fetches and shares one tenant's complete symbol snapshot for five
+ * Lazily fetches and shares one tenant's complete symbol snapshot for one
  * hour. The symbols endpoint has no upstream filter or pagination, so this
  * prevents repeated full payload downloads by symbol search and order checks.
  */

@@ -23,7 +23,7 @@ Setup registers the currently installed MCP binary through its absolute Node run
 
 Use `spot_prepare_market_buy` or `margin_prepare_market_buy` only with `quoteAmount` (for example, the exact USDT amount to spend for `ETHUSDT`). Use `spot_prepare_market_sell` or `margin_prepare_market_sell` only with `baseQuantity` (the exact ETH amount to sell for `ETHUSDT`). A market buy cannot guarantee an exact base-asset quantity; it must never reinterpret a requested base quantity as a quote amount.
 
-Before any order preview, MCP lazily loads `/sapi/v2/symbols` once per local profile and caches the symbol rules in memory for five minutes. Known quantity/price precision and limit-order minimum violations are rejected before confirmation.
+Before any order preview, MCP lazily loads `/sapi/v2/symbols` once per local profile and caches the symbol rules for one hour in memory and an isolated local cache. Known quantity/price precision and limit-order minimum violations are rejected before confirmation.
 
 ## Read response
 
@@ -39,7 +39,10 @@ MCP clients that support the current protocol also receive the same envelope in 
 
 Use these tools for requests that would otherwise return a broad market payload:
 
-- `market_search_symbols`: bounded symbol search and metadata. Use this for every MCP symbol lookup; it returns matching rows in `data.value.items`.
+- `market_get_symbol_overview`: counts by quote asset and a small sample. Use this first for a generic request to list trading pairs.
+- `market_list_symbols`: a paged, optionally quote-asset-filtered list without order-rule metadata.
+- `market_search_symbols`: required-keyword lookup with at most 20 basic matching rows. Do not use it for a generic pair list.
+- `market_get_symbol_info`: exact precision and minimum order rules for one symbol only.
 - `market_get_ticker_summary`: watchlist, gainers, losers, and quote-volume leaders.
 - `market_get_depth_summary`: best bid/ask, spread, and up to 20 levels per side.
 - `market_get_trades_summary`: price range, buy/sell statistics, and up to 50 recent trades.

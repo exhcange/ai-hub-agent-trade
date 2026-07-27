@@ -137,49 +137,145 @@ export function summarizeTickers(value: unknown, options: Required<Pick<MarketSu
   };
 }
 
-/** Searches the full symbol metadata response and returns only a bounded matching subset. */
-export function summarizeSymbols(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit">> & Pick<MarketSummaryOptions, "query" | "quoteAsset">): JsonRecord {
+interface ParsedSymbol {
+  symbol: string;
+  apiSymbol: string | null;
+  baseAsset: string | null;
+  quoteAsset: string | null;
+  pricePrecision: unknown;
+  quantityPrecision: unknown;
+  limitVolumeMin: string | null;
+  limitPriceMin: string | null;
+  limitAmountMin: string | null;
+}
+
+function normalizedSymbol(value: string): string {
+  return value.replaceAll("/", "").trim().toUpperCase();
+}
+
+function parsedSymbolRows(value: unknown): ParsedSymbol[] {
   const payload = record(value, "Symbols response must be an object.");
   const rows = records(payload.symbols, "Symbols response must contain a symbols array.");
-  const query = options.query?.trim().toUpperCase();
-  const quoteAsset = options.quoteAsset?.trim().toUpperCase();
-  const matches = rows.filter((item) => {
-    const symbol = text(item.SymbolName) ?? text(item.symbol) ?? "";
-    const quote = text(item.quoteAsset)?.toUpperCase();
-    return (!query || symbol.toUpperCase().includes(query)) && (!quoteAsset || quote === quoteAsset);
-  });
-  const sortedMatches = [...matches].sort((left, right) => {
-    if (!query) return 0;
-    const rank = (item: JsonRecord): number => {
-      const symbol = (text(item.SymbolName) ?? text(item.symbol) ?? "").toUpperCase();
-      return symbol.startsWith(`${query}/`) ? 0 : symbol.startsWith(query) ? 1 : 2;
+  return rows.map((item) => {
+    const apiSymbol = text(item.symbol);
+    const symbol = text(item.SymbolName) ?? apiSymbol ?? "";
+    return {
+      symbol,
+      apiSymbol,
+      baseAsset: text(item.baseAssetName) ?? text(item.baseAsset),
+      quoteAsset: text(item.quoteAssetName) ?? text(item.quoteAsset),
+      pricePrecision: item.pricePrecision ?? null,
+      quantityPrecision: item.quantityPrecision ?? null,
+      limitVolumeMin: text(item.limitVolumeMin),
+      limitPriceMin: text(item.limitPriceMin),
+      limitAmountMin: text(item.limitAmountMin)
     };
-    return rank(left) - rank(right);
-  });
-  const quoteAssetCounts = new Map<string, number>();
+  }).filter((item) => Boolean(item.symbol));
+}
+
+function quoteAssetCounts(rows: readonly ParsedSymbol[]): JsonRecord[] {
+  const counts = new Map<string, number>();
   for (const item of rows) {
-    const quote = text(item.quoteAsset)?.toUpperCase();
-    if (quote) quoteAssetCounts.set(quote, (quoteAssetCounts.get(quote) ?? 0) + 1);
+    const quote = item.quoteAsset?.toUpperCase();
+    if (quote) counts.set(quote, (counts.get(quote) ?? 0) + 1);
   }
-  const items = sortedMatches.slice(0, options.limit).map((item) => ({
-    symbol: text(item.SymbolName) ?? text(item.symbol),
-    apiSymbol: text(item.symbol),
-    baseAsset: text(item.baseAssetName) ?? text(item.baseAsset),
-    quoteAsset: text(item.quoteAssetName) ?? text(item.quoteAsset),
-    pricePrecision: item.pricePrecision ?? null,
-    quantityPrecision: item.quantityPrecision ?? null,
-    limitVolumeMin: text(item.limitVolumeMin),
-    limitPriceMin: text(item.limitPriceMin),
-    limitAmountMin: text(item.limitAmountMin)
-  }));
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([asset, count]) => ({ asset, count }));
+}
+
+function basicSymbolItem(item: ParsedSymbol): JsonRecord {
+  return {
+    symbol: item.symbol,
+    apiSymbol: item.apiSymbol,
+    baseAsset: item.baseAsset,
+    quoteAsset: item.quoteAsset
+  };
+}
+
+function fullSymbolItem(item: ParsedSymbol): JsonRecord {
+  return {
+    ...basicSymbolItem(item),
+    pricePrecision: item.pricePrecision,
+    quantityPrecision: item.quantityPrecision,
+    limitVolumeMin: item.limitVolumeMin,
+    limitPriceMin: item.limitPriceMin,
+    limitAmountMin: item.limitAmountMin
+  };
+}
+
+function sortSymbolMatches(rows: readonly ParsedSymbol[], query?: string): ParsedSymbol[] {
+  const normalizedQuery = query?.trim().toUpperCase();
+  return [...rows].sort((left, right) => {
+    if (!normalizedQuery) return left.symbol.localeCompare(right.symbol);
+    const rank = (item: ParsedSymbol): number => {
+      const symbol = item.symbol.toUpperCase();
+      return symbol.startsWith(`${normalizedQuery}/`) ? 0 : symbol.startsWith(normalizedQuery) ? 1 : 2;
+    };
+    return rank(left) - rank(right) || left.symbol.localeCompare(right.symbol);
+  });
+}
+
+/** Returns the small default response for a generic request to browse symbols. */
+export function summarizeSymbolOverview(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit">>): JsonRecord {
+  const rows = parsedSymbolRows(value);
   return {
     totalSymbols: rows.length,
+    quoteAssetCounts: quoteAssetCounts(rows),
+    sampleSymbols: sortSymbolMatches(rows).slice(0, options.limit).map((item) => item.symbol)
+  };
+}
+
+/** Lists a bounded page of symbols without order-rule metadata. */
+export function listSymbols(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit">> & { offset: number; quoteAsset?: string }): JsonRecord {
+  const allRows = parsedSymbolRows(value);
+  const quoteAsset = options.quoteAsset?.trim().toUpperCase();
+  const matches = sortSymbolMatches(allRows.filter((item) => !quoteAsset || item.quoteAsset?.toUpperCase() === quoteAsset));
+  const items = matches.slice(options.offset, options.offset + options.limit).map(basicSymbolItem);
+  const nextOffset = options.offset + items.length;
+  return {
+    totalSymbols: allRows.length,
     matchedSymbols: matches.length,
-    quoteAssetCounts: [...quoteAssetCounts.entries()]
-      .sort((left, right) => right[1] - left[1])
-      .map(([asset, count]) => ({ asset, count })),
+    quoteAsset: quoteAsset ?? null,
+    offset: options.offset,
+    limit: options.limit,
+    nextOffset: nextOffset < matches.length ? nextOffset : null,
     items
   };
+}
+
+/** Searches symbols by a required keyword without exposing their order-rule metadata. */
+export function searchSymbols(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit" | "query">> & Pick<MarketSummaryOptions, "quoteAsset">): JsonRecord {
+  const allRows = parsedSymbolRows(value);
+  const query = options.query.trim().toUpperCase();
+  const quoteAsset = options.quoteAsset?.trim().toUpperCase();
+  const matches = allRows.filter((item) => {
+    const symbol = item.symbol.toUpperCase();
+    const apiSymbol = item.apiSymbol?.toUpperCase() ?? "";
+    return (symbol.includes(query) || apiSymbol.includes(query)) && (!quoteAsset || item.quoteAsset?.toUpperCase() === quoteAsset);
+  });
+  const sortedMatches = sortSymbolMatches(matches, query);
+  return {
+    matchedSymbols: matches.length,
+    query,
+    quoteAsset: quoteAsset ?? null,
+    items: sortedMatches.slice(0, options.limit).map(basicSymbolItem)
+  };
+}
+
+/** Returns all known order-rule metadata for one exact spot symbol. */
+export function getSymbolInfo(value: unknown, symbol: string): JsonRecord {
+  const target = normalizedSymbol(symbol);
+  const item = parsedSymbolRows(value).find((row) => normalizedSymbol(row.symbol) === target || (row.apiSymbol !== null && normalizedSymbol(row.apiSymbol) === target));
+  if (!item) throw new AiHubError("AI_HUB_SYMBOL_NOT_FOUND", `Symbol "${symbol}" was not returned by the configured tenant OpenAPI symbols endpoint.`);
+  return fullSymbolItem(item);
+}
+
+/** @deprecated Use searchSymbols, listSymbols, summarizeSymbolOverview, or getSymbolInfo. */
+export function summarizeSymbols(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit">> & Pick<MarketSummaryOptions, "query" | "quoteAsset">): JsonRecord {
+  const query = options.query?.trim();
+  if (!query) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "query is required.");
+  return searchSymbols(value, { ...options, query });
 }
 
 function level(value: unknown): JsonRecord {

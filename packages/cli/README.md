@@ -33,8 +33,8 @@ Market BUY cannot guarantee an exact base-asset quantity. If the desired quantit
 
 The same unit rules apply to margin orders: use `margin order market-buy --quote-amount`, `margin order market-sell --base-quantity`, or `margin order limit --base-quantity --price`.
 
-Before an order preview is created, the CLI lazily loads `/sapi/v2/symbols` once per local profile and keeps the rule snapshot in memory for five minutes. It rejects known quantity/price precision and limit-order minimum violations before asking for confirmation.
+Before an order preview is created, the CLI lazily loads `/sapi/v2/symbols` once per local profile and keeps the rule snapshot for one hour in memory and an isolated local cache. It rejects known quantity/price precision and limit-order minimum violations before asking for confirmation.
 
 ## Bounded market analysis
 
-For broad market requests, use `ai-hub market symbols-search`, `ticker-summary`, `depth-summary`, `trades-summary`, or `klines-summary`. These commands return Agent-friendly bounded results instead of complete market payloads. Raw trades are capped at 100 rows; raw klines support up to 300 rows. Kline intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month` (`60min`, not `1h`).
+For a generic trading-pair list, use `ai-hub market symbols-overview`; it returns only counts and a small sample. Use `symbols-list --quote-asset USDT --offset 0 --limit 20` for paged browsing, `symbols-search --query BTC` for a keyword search, and `symbol-info --symbol BTCUSDT` only when precision or minimum order rules are needed. These commands return Agent-friendly bounded results instead of complete market payloads. Raw trades are capped at 100 rows; raw klines support up to 300 rows. Kline intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month` (`60min`, not `1h`).

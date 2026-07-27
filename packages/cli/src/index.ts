@@ -11,7 +11,7 @@ Usage:
   ai-hub config set-credentials --profile <name>
   ai-hub config show [--profile <name>]
   ai-hub config remove --profile <name>
-  ai-hub market <ping|time|symbols|symbols-search|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary> [options]
+  ai-hub market <ping|time|symbols|symbols-overview|symbols-list|symbols-search|symbol-info|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary> [options]
   ai-hub account <get|transfer|transfer-history> [options]
   ai-hub spot order <test|get|open|fills|market-buy|market-sell|limit|cancel|batch-place|batch-cancel> [options]
   ai-hub margin order <get|open|fills|market-buy|market-sell|limit|cancel> [options]

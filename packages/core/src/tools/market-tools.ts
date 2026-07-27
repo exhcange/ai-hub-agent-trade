@@ -1,10 +1,11 @@
 import { AiHubError } from "../errors.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalInteger, optionalString, requiredString, strictObject } from "./validation.js";
-import { summarizeDepth, summarizeKlines, summarizeSymbols, summarizeTickers, summarizeTrades } from "./market-summaries.js";
+import { getSymbolInfo, listSymbols, searchSymbols, summarizeDepth, summarizeKlines, summarizeSymbolOverview, summarizeTickers, summarizeTrades } from "./market-summaries.js";
 import { getCachedSymbols } from "./symbol-rules.js";
 
 const readErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
+const symbolReadErrors = [...readErrors, "AI_HUB_SYMBOL_NOT_FOUND"] as const;
 
 /**
  * The exact values consumed by the OpenAPI kline Redis keys. Do not send
@@ -83,7 +84,7 @@ export const marketTools: ToolSpec[] = [
   {
     name: "market_get_symbols",
     title: "Get Spot Symbols",
-    description: "Get complete spot symbol metadata from the configured tenant OpenAPI. Use market_search_symbols for browsing or filtering, because this response may be large.",
+    description: "Get complete spot symbol metadata from the configured tenant OpenAPI. Use market_get_symbol_overview, market_list_symbols, market_search_symbols, or market_get_symbol_info for Agent-facing symbol requests, because this response may be large.",
     cliPath: ["market", "symbols"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
     mcpVisible: false,
@@ -93,21 +94,67 @@ export const marketTools: ToolSpec[] = [
     handler: (_input, context) => getCachedSymbols(context)
   },
   {
+    name: "market_get_symbol_overview",
+    title: "Get Spot Symbol Overview",
+    description: "Get a small overview of all configured spot symbols: total count, quote-asset counts, and a bounded sample of display symbols. Use this for generic requests such as listing available trading pairs.",
+    cliPath: ["market", "symbols-overview"],
+    module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 20, description: "Number of sample display symbols. Defaults to 12." } }, additionalProperties: false },
+    errorCodes: readErrors,
+    validate: (input) => {
+      const value = strictObject(input, ["limit"]);
+      return { limit: optionalInteger(value, "limit", 12, 1, 20) };
+    },
+    handler: async (input, context) => summarizeSymbolOverview(await getCachedSymbols(context), input as { limit: number })
+  },
+  {
+    name: "market_list_symbols",
+    title: "List Spot Symbols",
+    description: "List one bounded page of configured spot symbols, optionally restricted to a quote asset. This response excludes precision and trading-rule metadata. Use market_get_symbol_info for one exact symbol's rules.",
+    cliPath: ["market", "symbols-list"],
+    module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    inputSchema: { type: "object", properties: { quoteAsset: { type: "string" }, offset: { type: "integer", minimum: 0, description: "Zero-based page offset. Defaults to 0." }, limit: { type: "integer", minimum: 1, maximum: 50, description: "Page size. Defaults to 20." } }, additionalProperties: false },
+    errorCodes: readErrors,
+    validate: (input) => {
+      const value = strictObject(input, ["quoteAsset", "offset", "limit"]);
+      return {
+        quoteAsset: optionalString(value, "quoteAsset"),
+        offset: optionalInteger(value, "offset", 0, 0, Number.MAX_SAFE_INTEGER),
+        limit: optionalInteger(value, "limit", 20, 1, 50)
+      };
+    },
+    handler: async (input, context) => listSymbols(await getCachedSymbols(context), input as { quoteAsset?: string; offset: number; limit: number })
+  },
+  {
     name: "market_search_symbols",
     title: "Search Spot Symbols",
-    description: "Search the configured tenant's spot symbols and return a bounded metadata result. In MCP, matching rows are at data.value.items. Use this instead of market_get_symbols unless complete raw metadata is explicitly required.",
+    description: "Search configured spot symbols by a required keyword and return a small matching set without trading-rule metadata. Use market_list_symbols for browsing, or market_get_symbol_info for exact precision and minimum rules.",
     cliPath: ["market", "symbols-search"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { query: { type: "string" }, quoteAsset: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 50 } }, additionalProperties: false },
+    inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, description: "Required asset or symbol keyword, for example BTC." }, quoteAsset: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"], additionalProperties: false },
     errorCodes: readErrors,
     validate: (input) => {
       const value = strictObject(input, ["query", "quoteAsset", "limit"]);
-      return { query: optionalString(value, "query"), quoteAsset: optionalString(value, "quoteAsset"), limit: optionalInteger(value, "limit", 20, 1, 50) };
+      return { query: requiredString(value, "query"), quoteAsset: optionalString(value, "quoteAsset"), limit: optionalInteger(value, "limit", 10, 1, 20) };
     },
     handler: async (input, context) => {
-      const value = input as { query?: string; quoteAsset?: string; limit: number };
-      return summarizeSymbols(await getCachedSymbols(context), value);
+      const value = input as { query: string; quoteAsset?: string; limit: number };
+      return searchSymbols(await getCachedSymbols(context), value);
     }
+  },
+  {
+    name: "market_get_symbol_info",
+    title: "Get Spot Symbol Information",
+    description: "Get the exact configured spot symbol's trading-rule metadata, including price and quantity precision plus minimum order constraints. Requires an exact symbol such as BTCUSDT or BTC/USDT.",
+    cliPath: ["market", "symbol-info"],
+    module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    inputSchema: { type: "object", properties: { symbol: { type: "string", minLength: 1 } }, required: ["symbol"], additionalProperties: false },
+    errorCodes: symbolReadErrors,
+    validate: (input) => {
+      const value = strictObject(input, ["symbol"]);
+      return { symbol: requiredString(value, "symbol") };
+    },
+    handler: async (input, context) => getSymbolInfo(await getCachedSymbols(context), (input as { symbol: string }).symbol)
   },
   {
     name: "market_get_ticker",
