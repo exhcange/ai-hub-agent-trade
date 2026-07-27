@@ -5,6 +5,7 @@ All commands in this reference require a profile with locally configured credent
 | Command | Required options | Optional options |
 | --- | --- | --- |
 | `ai-hub account get` | None | `--profile` |
+| `ai-hub account asset-balance` | `--asset` | `--profile` |
 | `ai-hub account transfer-history` | `--transfer-id`, or both `--from-account` and `--to-account` | `--coin-symbol`, `--start-time`, `--end-time`, `--page`, `--limit`, `--profile` |
 | `ai-hub account transfer` | `--coin-symbol`, `--amount`, `--from-account`, `--to-account` | `--profile` |
 
@@ -12,6 +13,7 @@ Examples:
 
 ```bash
 ai-hub account get --profile default
+ai-hub account asset-balance --asset ETH --profile default
 ai-hub account transfer-history --from-account EXCHANGE --to-account FUTURE --coin-symbol USDT
 ai-hub account transfer --coin-symbol USDT --amount 10 --from-account EXCHANGE --to-account FUTURE
 ```

@@ -84,4 +84,11 @@ test("registry exposes bounded market tools and keeps unfiltered ticker requests
     () => registry.byName("market_get_ticker").validate({}),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
   );
+  assert.throws(
+    () => registry.byName("market_get_ticker").validate({ symbol: "BTCUSDT", symbols: "ETHUSDT" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
+  for (const name of ["market_get_depth", "market_get_trades", "market_get_klines"]) {
+    assert.equal(registry.byName(name).mcpVisible, false);
+  }
 });

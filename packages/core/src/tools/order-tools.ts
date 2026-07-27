@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { AiHubError } from "../errors.js";
 import type { SpotCancelOrderParams, SpotPlaceOrderParams } from "../openapi.js";
+import { requireAvailableBalance } from "./account-balance.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { requiredEnum } from "./tool-utils.js";
 import { optionalInteger, optionalString, requiredString, strictObject } from "./validation.js";
-import { preflightSymbolOrder } from "./symbol-rules.js";
+import { floorDecimal, getSymbolRule, isAtLeastDecimal, preflightSymbolOrder, subtractNonNegativeDecimal } from "./symbol-rules.js";
 
 const signedReadErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_CREDENTIAL_NOT_CONFIGURED", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
-const writeErrors = [...signedReadErrors, "AI_HUB_WRITE_CONFIRMATION_REQUIRED", "AI_HUB_CONFIRMATION_REQUIRED", "AI_HUB_CONFIRMATION_EXPIRED", "AI_HUB_CONFIRMATION_CONTEXT_CHANGED", "AI_HUB_CONFIRMATION_NOT_FOUND"] as const;
+const writeErrors = [...signedReadErrors, "AI_HUB_SYMBOL_NOT_FOUND", "AI_HUB_SYMBOL_PRECISION_INVALID", "AI_HUB_SYMBOL_MINIMUM_NOT_MET", "AI_HUB_INSUFFICIENT_AVAILABLE_BALANCE", "AI_HUB_WRITE_CONFIRMATION_REQUIRED", "AI_HUB_CONFIRMATION_REQUIRED", "AI_HUB_CONFIRMATION_EXPIRED", "AI_HUB_CONFIRMATION_CONTEXT_CHANGED", "AI_HUB_CONFIRMATION_NOT_FOUND"] as const;
 const decimal = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
 type SpotOrderIntent = "market_buy" | "market_sell" | "limit";
@@ -16,6 +17,14 @@ interface SemanticSpotOrder extends SpotPlaceOrderParams {
   intent: SpotOrderIntent;
   quoteAmount?: string;
   baseQuantity?: string;
+}
+
+interface SellAvailableOrder extends SemanticSpotOrder {
+  requestedMode: "available_balance";
+  baseAsset?: string;
+  availableBaseQuantity?: string;
+  executableBaseQuantity?: string;
+  remainderBaseQuantity?: string;
 }
 
 function positiveDecimal(value: Record<string, unknown>, name: string): string {
@@ -120,6 +129,22 @@ function validateMarketSell(input: unknown): SemanticSpotOrder {
   return validateSemanticOrder({ ...value, side: "SELL", type: "MARKET" });
 }
 
+function validateSellAvailable(input: unknown): SellAvailableOrder {
+  const value = strictObject(input, ["symbol", "newClientOrderId", "recvWindow"]);
+  const symbol = requiredString(value, "symbol");
+  return {
+    symbol,
+    // Replaced by the signed balance and symbol-rule preflight before a preview is created.
+    volume: "0",
+    side: "SELL",
+    type: "MARKET",
+    intent: "market_sell",
+    baseQuantity: "0",
+    requestedMode: "available_balance",
+    ...optionalOrderFields(value)
+  };
+}
+
 function validateLimitOrder(input: unknown): SemanticSpotOrder {
   const value = strictObject(input, ["symbol", "side", "baseQuantity", "price", "timeInForce", "newClientOrderId", "recvWindow"]);
   return validateSemanticOrder({ ...value, type: "LIMIT" });
@@ -168,9 +193,48 @@ function semanticOrderSummary(order: SemanticSpotOrder): Record<string, unknown>
   };
 }
 
+function sellAvailableSummary(order: SellAvailableOrder): Record<string, unknown> {
+  return {
+    ...semanticOrderSummary(order),
+    requestedMode: order.requestedMode,
+    baseAsset: order.baseAsset,
+    availableBaseQuantity: order.availableBaseQuantity,
+    executableBaseQuantity: order.executableBaseQuantity,
+    remainderBaseQuantity: order.remainderBaseQuantity,
+    rounding: "floored to the configured base-quantity precision"
+  };
+}
+
 async function preflightSpotOrder(order: SemanticSpotOrder, context: Parameters<NonNullable<ToolSpec<SemanticSpotOrder>["preflight"]>>[1]): Promise<SemanticSpotOrder> {
   await preflightSymbolOrder(context, order);
   return order;
+}
+
+async function preflightSellAvailable(order: SellAvailableOrder, context: Parameters<NonNullable<ToolSpec<SellAvailableOrder>["preflight"]>>[1]): Promise<SellAvailableOrder> {
+  const rule = await getSymbolRule(context, order.symbol);
+  if (!rule.baseAsset) {
+    throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", `Symbol "${rule.symbol}" did not include a base asset.`);
+  }
+  const balance = requireAvailableBalance(await context.api.account(signed(context)), rule.baseAsset);
+  const executableBaseQuantity = floorDecimal(balance.available, rule.quantityPrecision ?? 0);
+  if (executableBaseQuantity === "0") {
+    throw new AiHubError("AI_HUB_INSUFFICIENT_AVAILABLE_BALANCE", `Available ${balance.asset} balance is below the executable quantity precision for ${rule.symbol}.`);
+  }
+  if (rule.limitVolumeMin && !isAtLeastDecimal(executableBaseQuantity, rule.limitVolumeMin)) {
+    throw new AiHubError("AI_HUB_SYMBOL_MINIMUM_NOT_MET", `Available ${balance.asset} balance for ${rule.symbol} is below the minimum executable quantity of ${rule.limitVolumeMin}.`);
+  }
+  const prepared: SellAvailableOrder = {
+    ...order,
+    symbol: rule.symbol,
+    volume: executableBaseQuantity,
+    baseQuantity: executableBaseQuantity,
+    baseAsset: balance.asset,
+    availableBaseQuantity: balance.available,
+    executableBaseQuantity,
+    remainderBaseQuantity: subtractNonNegativeDecimal(balance.available, executableBaseQuantity)
+  };
+  await preflightSymbolOrder(context, prepared);
+  return prepared;
 }
 
 async function preflightSpotBatch(input: { symbol: string; orders: Array<{ volume: string; side: "BUY" | "SELL"; batchType: "LIMIT" | "MARKET"; price?: string }> }, context: Parameters<NonNullable<ToolSpec["preflight"]>>[1]): Promise<typeof input> {
@@ -247,6 +311,15 @@ export const orderTools: ToolSpec<any>[] = [
     preflight: preflightSpotOrder,
     handler: (input, context) => context.api.placeOrder(toOpenApiOrder(input as SemanticSpotOrder), signed(context)),
     writeSummary: (input) => semanticOrderSummary(input as SemanticSpotOrder)
+  },
+  {
+    name: "spot_sell_available", title: "Prepare Market Sell of Available Balance", description: "Prepare a market SELL of the maximum available base-asset balance for one symbol. It reads the signed balance, floors only to the configured quantity precision, shows the executable amount and remainder, and still requires separate confirmation.", cliPath: ["spot", "order", "sell-available"],
+    module: "spot-order", access: "signed", operation: "write", riskLevel: "high",
+    inputSchema: { type: "object", properties: { symbol: { type: "string", description: "Spot symbol, for example ETHUSDT." }, newClientOrderId: { type: "string" }, recvWindow: { type: "string" } }, required: ["symbol"], additionalProperties: false }, errorCodes: writeErrors,
+    validate: validateSellAvailable,
+    preflight: preflightSellAvailable,
+    handler: (input, context) => context.api.placeOrder(toOpenApiOrder(input as SellAvailableOrder), signed(context)),
+    writeSummary: (input) => sellAvailableSummary(input as SellAvailableOrder)
   },
   {
     name: "spot_limit_order", title: "Place Limit Spot Order", description: "Place a LIMIT BUY or SELL using an exact base-asset quantity and a limit price.", cliPath: ["spot", "order", "limit"],

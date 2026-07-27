@@ -162,13 +162,19 @@ export const marketTools: ToolSpec[] = [
     description: "Get exact raw spot ticker data for one symbol or an explicitly requested symbol list. For an all-market overview, use market_get_ticker_summary instead.",
     cliPath: ["market", "ticker"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, symbols: { type: "string" }, timeZone: { type: "string" } }, additionalProperties: false },
+    inputSchema: {
+      type: "object",
+      properties: { symbol: { type: "string", minLength: 1, description: "One exact symbol, for example ETHUSDT." }, symbols: { type: "string", minLength: 1, description: "An explicitly requested upstream symbol list." }, timeZone: { type: "string" } },
+      oneOf: [{ required: ["symbol"] }, { required: ["symbols"] }],
+      additionalProperties: false
+    },
     errorCodes: readErrors,
     validate: (input) => {
       const value = strictObject(input, ["symbol", "symbols", "timeZone"]);
       const symbol = optionalString(value, "symbol");
       const symbols = optionalString(value, "symbols");
       if (!symbol && !symbols) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "market_get_ticker requires symbol or symbols. Use market_get_ticker_summary for all-market data.");
+      if (symbol && symbols) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "market_get_ticker accepts either symbol or symbols, not both.");
       return { symbol, symbols, timeZone: optionalString(value, "timeZone") };
     },
     handler: (input, context) => context.api.ticker(input as { symbol?: string; symbols?: string; timeZone?: string })
@@ -196,6 +202,7 @@ export const marketTools: ToolSpec[] = [
     description: "Get the spot order book for one symbol.",
     cliPath: ["market", "depth"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    mcpVisible: false,
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 } }, required: ["symbol"], additionalProperties: false },
     errorCodes: readErrors,
     validate: (input) => {
@@ -230,6 +237,7 @@ export const marketTools: ToolSpec[] = [
     description: "Get recent spot trades for one symbol.",
     cliPath: ["market", "trades"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    mcpVisible: false,
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 } }, required: ["symbol"], additionalProperties: false },
     errorCodes: readErrors,
     validate: (input) => {
@@ -264,6 +272,7 @@ export const marketTools: ToolSpec[] = [
     description: "Get raw spot candlestick data for one symbol and a supported interval. Use market_get_klines_summary for Agent analysis.",
     cliPath: ["market", "klines"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    mcpVisible: false,
     inputSchema: { type: "object", properties: { symbol: { type: "string", description: "Spot symbol, for example ETHUSDT or ETH/USDT." }, interval: { type: "string", enum: KLINE_INTERVALS, description: klineIntervalDescription }, startTime: { type: "integer", description: "Optional inclusive Unix timestamp in milliseconds." }, endTime: { type: "integer", description: "Optional inclusive Unix timestamp in milliseconds." }, timezone: { type: "string", description: klineTimezoneDescription }, limit: { type: "integer", minimum: 1, maximum: 300, description: "Number of newest-first candles. The upstream maximum is 300." } }, required: ["symbol", "interval"], additionalProperties: false },
     errorCodes: readErrors,
     validate: (input) => {

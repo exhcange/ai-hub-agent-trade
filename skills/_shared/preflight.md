@@ -1,14 +1,10 @@
 # Shared Preflight
 
-Apply this preflight before an authenticated command or any command that changes state.
+Use this reference only for first-time setup, a profile change, or a configuration/credential error. Do not run a configuration command before every authenticated request.
 
 ## 1. Select the local profile
 
-```bash
-ai-hub config show --profile <profile>
-```
-
-If no profile exists, create one before continuing:
+When the selected profile is already configured, execute the focused API command directly. If the CLI reports that the profile or credentials are missing, create or repair it:
 
 ```bash
 ai-hub config init
@@ -16,7 +12,7 @@ ai-hub config set --profile <profile> --openapi-base-url https://your-openapi-do
 ai-hub config set-credentials --profile <profile>
 ```
 
-Use `--profile <profile>` on an API command when the desired profile is not the default. Do not expose, print, or pass API credentials as command-line flags. The credential setup command prompts locally and saves plaintext credentials to `~/.ai-hub/config.toml`, which is written with mode `600`.
+Use `--profile <profile>` on an API command only when the desired profile is not the default. Do not expose, print, or pass API credentials as command-line flags. The credential setup command prompts locally and saves plaintext credentials to `~/.ai-hub/config.toml`, which is written with mode `600`.
 
 ## 2. Classify the operation
 

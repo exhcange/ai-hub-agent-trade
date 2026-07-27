@@ -28,12 +28,12 @@ The profile stores the OpenAPI URL, API key, and secret key in `~/.ai-hub/config
 
 ## Operating Rules
 
-- Read-only commands may run immediately after the relevant profile is available.
-- Every state-changing command first prints an exact preview and waits for a new manual `yes` response in an interactive terminal.
-- An agent must never enter `yes`, fabricate a confirmation, or treat the original request as approval. It must stop after the preview and wait for a fresh user decision.
+- If the selected profile is already configured, run the focused command directly. Use configuration commands only for first-time setup, a profile change, or a configuration/credential error.
+- Every state-changing command first prints an exact preview and exits. After a new explicit user message, invoke `ai-hub confirm` with the returned confirmation ID and that message.
+- An agent must never fabricate a confirmation or treat the original request as approval. It must stop after the preview and wait for a fresh user decision.
 - Skills do not define MCP tools. A separately installed local MCP client follows the same capability and confirmation rules.
 
-Read [_shared/preflight.md](_shared/preflight.md) before any authenticated or state-changing workflow.
+Read [_shared/preflight.md](_shared/preflight.md) only when setup or a configuration/credential error requires it.
 
 ## Skill Format
 

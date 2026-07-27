@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-order
-version: 0.1.10
+version: 0.1.11
 description: Use this Skill when a user asks to test, retrieve, list, buy, sell, place a limit order, batch-place, cancel, or batch-cancel supported AI Hub spot orders. Use the local ai-hub CLI with a configured credential profile. Every state-changing action requires an exact preview followed by a new manual user confirmation.
 ---
 
@@ -10,7 +10,7 @@ Use this Skill only for supported spot order operations. Do not infer an order s
 
 ## Prerequisites
 
-Read [../_shared/preflight.md](../_shared/preflight.md) before every workflow. Confirm that the target profile is configured and that the user has supplied all mandatory order fields.
+If the selected profile is already configured, run the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error. Confirm that the user has supplied all mandatory order fields.
 
 For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Never retry a failed or unknown write until the diagnosis permits it and the user starts a new confirmation flow.
 
@@ -24,6 +24,7 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 | `ai-hub spot order fills` | Read | List fills for one symbol. |
 | `ai-hub spot order market-buy` | Write | Spend an exact quote-asset amount at market. |
 | `ai-hub spot order market-sell` | Write | Sell an exact base-asset quantity at market. |
+| `ai-hub spot order sell-available` | Write | Preview the maximum executable available base-asset balance for sale. |
 | `ai-hub spot order limit` | Write | Place a limit BUY or SELL with a base-asset quantity and price. |
 | `ai-hub spot order cancel` | Write | Cancel one supported spot order. |
 | `ai-hub spot order batch-place` | Write | Place 1–10 orders for one symbol. |
@@ -40,7 +41,7 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 1. Use `market-buy` only for a market BUY with `--quote-amount`: this is the exact quote asset to spend. Never reinterpret a requested base-asset quantity as a quote amount.
 2. Use `market-sell` only for a market SELL with `--base-quantity`: this is the exact base asset to sell.
 3. Use `limit` for a limit BUY or SELL with `--base-quantity` and `--price`.
-4. When the user asks to sell all available balance, query the available balance and the symbol rules first. Do not silently round a quantity that exceeds the supported precision; state the executable quantity and obtain a new user instruction for it.
+4. Use `sell-available` only when the user explicitly asks to sell all available balance. It floors the available base balance to the configured quantity precision and displays the executable amount and remainder in the preview. For `market-sell`, never change the exact quantity supplied by the user.
 5. Run the write command once, optionally with `--prepare`. It prints an exact preview, a `confirmationId`, and `executed: false`, then exits.
 6. Stop and wait for a new explicit user message. Only then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` exactly once.
 7. Never type, pipe, generate, or infer a confirmation. Never use `--confirm`; it is intentionally rejected.

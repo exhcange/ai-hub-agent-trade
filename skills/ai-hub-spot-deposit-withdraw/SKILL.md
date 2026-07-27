@@ -11,7 +11,7 @@ Account types are fixed: `1` Spot, `2` Isolated Margin, `3` Cross Margin, `4` C2
 
 ## Prerequisites
 
-Read [../_shared/preflight.md](../_shared/preflight.md). Confirm the requested profile and credentials before running any command in this Skill.
+If the selected profile is already configured, run the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error.
 
 For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). In particular, a withdrawal-history permission diagnosis requires an API-key permission change, not a retry.
 
@@ -43,7 +43,7 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 4. For a withdrawal, collect the withdrawal order ID, coin symbol, amount, exact address, and optional label. Do not infer a label or destination.
 5. Show a plain-language summary before executing the command.
 6. Run the command once. It prints the exact preview.
-7. Stop. The user must enter a new manual `yes` in the interactive terminal. Never enter, pipe, or infer it.
+7. Stop and wait for a new explicit user message. Then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once; never enter, pipe, or infer it.
 8. If the write outcome is unknown, query its relevant history before any retry.
 
 Read [references/wallet-commands.md](references/wallet-commands.md) for parameters and examples.

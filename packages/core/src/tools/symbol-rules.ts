@@ -9,6 +9,8 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 
 export interface SymbolRule {
   symbol: string;
+  baseAsset?: string;
+  quoteAsset?: string;
   quantityPrecision?: number;
   pricePrecision?: number;
   limitVolumeMin?: string;
@@ -108,6 +110,8 @@ function parseRules(response: unknown): Map<string, SymbolRule> {
     if (!symbol) continue;
     result.set(normalizedSymbol(symbol), {
       symbol,
+      baseAsset: stringValue(row.baseAssetName) ?? stringValue(row.baseAsset),
+      quoteAsset: stringValue(row.quoteAssetName) ?? stringValue(row.quoteAsset),
       quantityPrecision: nonNegativeInteger(row.quantityPrecision),
       pricePrecision: nonNegativeInteger(row.pricePrecision),
       limitVolumeMin: stringValue(row.limitVolumeMin),
@@ -163,7 +167,7 @@ function decimalScale(value: string): number {
 }
 
 function decimalParts(value: string): { digits: bigint; scale: number } {
-  const [whole, fraction = ""] = value.split(".");
+  const [whole = "0", fraction = ""] = value.split(".");
   return { digits: BigInt(`${whole}${fraction}`.replace(/^0+(?=\d)/, "") || "0"), scale: fraction.length };
 }
 
@@ -174,6 +178,35 @@ function compareDecimal(left: string, right: string): number {
   const leftValue = a.digits * 10n ** BigInt(scale - a.scale);
   const rightValue = b.digits * 10n ** BigInt(scale - b.scale);
   return leftValue === rightValue ? 0 : leftValue > rightValue ? 1 : -1;
+}
+
+/** Floors a non-negative decimal string without using floating point arithmetic. */
+export function floorDecimal(value: string, precision: number): string {
+  if (!/^\d+(?:\.\d+)?$/.test(value) || precision < 0 || !Number.isInteger(precision)) {
+    throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "A balance or symbol precision value could not be parsed.");
+  }
+  const [whole = "0", fraction = ""] = value.split(".");
+  const kept = fraction.slice(0, precision);
+  const normalizedWhole = whole.replace(/^0+(?=\d)/, "") || "0";
+  const normalizedFraction = kept.replace(/0+$/, "");
+  return normalizedFraction ? `${normalizedWhole}.${normalizedFraction}` : normalizedWhole;
+}
+
+export function subtractNonNegativeDecimal(left: string, right: string): string {
+  const comparison = compareDecimal(left, right);
+  if (comparison < 0) throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "Balance arithmetic produced a negative result.");
+  const a = decimalParts(left);
+  const b = decimalParts(right);
+  const scale = Math.max(a.scale, b.scale);
+  const digits = a.digits * 10n ** BigInt(scale - a.scale) - b.digits * 10n ** BigInt(scale - b.scale);
+  const raw = digits.toString().padStart(scale + 1, "0");
+  if (!scale) return raw;
+  const fraction = raw.slice(-scale).replace(/0+$/, "");
+  return fraction ? `${raw.slice(0, -scale)}.${fraction}` : raw.slice(0, -scale);
+}
+
+export function isAtLeastDecimal(value: string, minimum: string): boolean {
+  return compareDecimal(value, minimum) >= 0;
 }
 
 function multipliedDecimal(left: string, right: string): string {

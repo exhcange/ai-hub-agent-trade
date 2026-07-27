@@ -32,4 +32,4 @@ ai-hub sub-account root-transfer --sub-uid 10001 --coin-symbol USDT --amount 10 
 
 For `set-trading-status`, `type` is one of `lever`, `etf`, or `deposit`; `status` is `0` or `1`. For `api-key set-ip`, `status` is `1` or `2`; status `2` additionally requires `--ip-address`. `create` accepts a value of at most five characters for `--sub-user-email`.
 
-All write commands print a preview before execution. The user must enter a fresh manual `yes` in an interactive terminal. Do not type, pipe, or infer the confirmation.
+All write commands print a preview and exit before execution. After a new explicit user message, run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once. Do not type, pipe, or infer the confirmation.

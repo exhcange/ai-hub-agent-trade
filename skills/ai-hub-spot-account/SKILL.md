@@ -9,7 +9,7 @@ Use this Skill for the configured account overview and account-level transfer hi
 
 ## Prerequisites
 
-Read [../_shared/preflight.md](../_shared/preflight.md). Verify the selected profile and its credential reference before using any command in this Skill.
+If the selected profile is already configured, run the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error.
 
 For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md) before proposing a retry or alternative action.
 
@@ -18,13 +18,14 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 | Command | Operation | Description |
 | --- | --- | --- |
 | `ai-hub account get` | Read | Get the signed account overview. |
+| `ai-hub account asset-balance` | Read | Get one asset's compact available, frozen, and total balance. |
 | `ai-hub account transfer-history` | Read | Query Spot/Derivatives transfer history. |
 | `ai-hub account transfer` | Write | Transfer only between Spot and Derivatives. |
 
 ## Read Workflow
 
-1. Confirm the profile that owns the requested account data.
-2. Execute `ai-hub account get` for the overview, or use transfer history with either a transfer ID or both account names.
+1. Use `ai-hub account asset-balance --asset <asset>` when the request is for one asset; use `account get` only when an account overview is needed.
+2. Use transfer history with either a transfer ID or both account names.
 3. Return only the fields needed to answer the request. Never print credentials or credential references.
 
 ## Transfer Workflow
@@ -34,7 +35,7 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 3. Use `ai-hub wallet transfer` for Isolated Margin, Cross Margin, or C2C transfers instead.
 4. Explain the source account, destination account, asset, and amount before running the command.
 5. Run the CLI command once and display its preview.
-6. Stop. The user must enter a fresh manual `yes` response in the interactive terminal; never enter it for them.
+6. Stop and wait for a new explicit user message. Then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once; never provide or infer that message.
 7. If the result is uncertain, query the transfer history rather than retrying.
 
 Read [references/account-commands.md](references/account-commands.md) for command parameters and examples.

@@ -9,7 +9,7 @@ Use this Skill for public spot market information. All commands in this Skill ar
 
 ## Prerequisites
 
-Confirm that the requested profile has the intended OpenAPI URL. Read [../_shared/preflight.md](../_shared/preflight.md) if the request expands to an authenticated or state-changing operation.
+Run public commands directly with the configured default profile. Read [../_shared/preflight.md](../_shared/preflight.md) only if the request expands to authenticated work and the CLI reports a profile or credential error.
 
 ## Command Index
 

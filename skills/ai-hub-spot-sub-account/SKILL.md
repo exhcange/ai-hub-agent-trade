@@ -9,7 +9,7 @@ Use this Skill for supported sub-account operations only. Do not assume a sub-ac
 
 ## Prerequisites
 
-Read [../_shared/preflight.md](../_shared/preflight.md). Confirm that the selected credential profile has the necessary sub-account permission before executing a command.
+If the selected profile is already configured, run the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error.
 
 For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Do not substitute a different sub-account identifier or credential without a user decision.
 
@@ -41,7 +41,7 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 
 1. Collect all required values and describe the precise effect, including sub-account ID, asset, amount, direction, capability status, API-key identifier, or IP address as applicable.
 2. Run the state-changing command once and display the returned preview.
-3. Stop. The user must enter a new manual `yes` in the interactive terminal after review.
+3. Stop and wait for a new explicit user message. Then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once.
 4. Never enter `yes`, infer consent, or chain a follow-up state-changing action from the same instruction.
 
 Read [references/sub-account-commands.md](references/sub-account-commands.md) for exact parameters and examples.

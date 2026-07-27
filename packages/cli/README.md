@@ -24,12 +24,15 @@ ai-hub spot order market-buy --symbol ETHUSDT --quote-amount 100
 
 # Market-sell exactly 0.5 ETH.
 ai-hub spot order market-sell --symbol ETHUSDT --base-quantity 0.5
+ai-hub spot order sell-available --symbol ETHUSDT
 
 # Buy exactly 1 ETH at a limit price of 1800 USDT.
 ai-hub spot order limit --symbol ETHUSDT --side BUY --base-quantity 1 --price 1800
 ```
 
 Market BUY cannot guarantee an exact base-asset quantity. If the desired quantity is "1 ETH", use a limit order or first choose an explicit USDT amount to spend.
+
+Use `ai-hub account asset-balance --asset ETH` when one asset is needed instead of the full account response. Use `ai-hub spot order sell-available --symbol ETHUSDT` when the user explicitly wants the maximum executable ETH balance sold: its preview floors only to the configured quantity precision and displays both the remainder and the amount that would be sold.
 
 The same unit rules apply to margin orders: use `margin order market-buy --quote-amount`, `margin order market-sell --base-quantity`, or `margin order limit --base-quantity --price`.
 

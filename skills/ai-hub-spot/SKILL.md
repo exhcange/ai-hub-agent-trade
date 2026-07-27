@@ -9,7 +9,7 @@ Route supported spot-account requests to the most specific Skill. Use the `ai-hu
 
 ## Prerequisites
 
-Read [../_shared/preflight.md](../_shared/preflight.md) before authenticated or state-changing work. Public market requests can use the common Skill directly.
+When the selected profile is already configured, execute the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error. Public market requests can use the common Skill directly.
 
 ## Routing
 
@@ -23,7 +23,7 @@ Read [../_shared/preflight.md](../_shared/preflight.md) before authenticated or 
 
 ## Safety Boundary
 
-Execute read-only commands after validating the parameters. For every state-changing action, produce the CLI preview, stop, and require the user to enter a new manual `yes` response in the interactive terminal. Never supply that response or convert an initial request into approval.
+Execute read-only commands after validating the parameters. For every state-changing action, produce the CLI preview, stop, and wait for a new explicit user message before separately invoking `ai-hub confirm`. Never supply that message or convert an initial request into approval.
 
 ## Business Failures
 

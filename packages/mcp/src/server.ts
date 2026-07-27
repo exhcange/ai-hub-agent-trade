@@ -23,12 +23,12 @@ const READ_RESULT_OUTPUT_SCHEMA: Tool["outputSchema"] = {
 };
 
 function result(data: unknown): CallToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+  return { content: [{ type: "text", text: JSON.stringify(data) }] };
 }
 
 export function toMcpReadResult(data: unknown): CallToolResult {
   const payload = { ok: true, data };
-  return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], structuredContent: payload };
+  return { content: [{ type: "text", text: JSON.stringify(payload) }], structuredContent: payload };
 }
 
 /** Adapts every read response into a stable MCP response shape so Agents never need to infer raw API shape. */
@@ -54,7 +54,7 @@ function toMcpTool(tool: ToolSpec): Tool {
   return {
     name: tool.name,
     title: tool.title,
-    description: `${tool.description}${tool.operation === "read" ? " Successful MCP output is structured as { ok: true, data: ... }. For list results, use data.items and data.count; for object results, use data.value. Check data.dataType before formatting." : ""}`,
+    description: tool.description,
     inputSchema: tool.inputSchema,
     ...(tool.operation === "read" ? { outputSchema: READ_RESULT_OUTPUT_SCHEMA } : {}),
     annotations: {
@@ -90,10 +90,10 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
   const registry = createToolRegistry();
   const writeExecutor = new ToolWriteExecutor(registry);
   const server = new Server(
-    { name: "ai-hub-agent-trade", version: "0.1.10" },
+    { name: "ai-hub-agent-trade", version: "0.1.11" },
     {
       capabilities: { tools: {} },
-      instructions: "Every successful read-tool response provides both JSON text and MCP structuredContent in the envelope { ok: true, data: ... }. All read-tool data is normalized: dataType=array means use data.items and data.count; dataType=object or scalar means use data.value; dataType=null means no value. Inspect data.dataType before formatting and never assume undocumented nested keys. For a generic trading-pair list, call market_get_symbol_overview first; it returns only counts and a small sample. For paged or quote-asset browsing, use market_list_symbols. Use market_search_symbols only when the user gave a keyword; query is required. Use market_get_symbol_info only for exact precision and minimum rules. Do not use a symbol search as a generic all-symbol list. The complete raw symbols payload is intentionally unavailable in MCP. For broad market questions, call market_get_ticker_summary, market_get_depth_summary, market_get_trades_summary, or market_get_klines_summary instead of fetching large raw payloads. Account types are fixed: 1=Spot, 2=Isolated Margin, 3=Cross Margin, 4=C2C, 5=Derivatives. Never call account type 2 Derivatives. For Spot to Derivatives, use account_prepare_transfer with fromAccount=EXCHANGE and toAccount=FUTURE. Use wallet_prepare_universal_transfer for margin or C2C; account type 2 requires its isolated-margin trading pair in symbol. Prepare/confirm tools return their documented action payload directly in data. For every state-changing action, call only a spot_prepare_* or margin_prepare_* tool first and show its exact summary to the user. Stop and wait for a new, explicit user confirmation message. Only then call confirm_action with that new message verbatim in userConfirmation. Never call prepare and confirm consecutively for one user instruction; never infer confirmation from prior intent, silence, or an Agent-generated message. For spot and margin orders, MARKET BUY always uses quoteAmount (the quote asset to spend); MARKET SELL uses baseQuantity (the base asset to sell). Never reinterpret a requested base quantity as quoteAmount."
+      instructions: "Read results use {ok:true,data}; inspect data.dataType before reading fields. Use bounded summary tools for broad market requests. For writes, call a prepare tool, show its preview, stop for a new user message, then call confirm_action with that message. MARKET BUY uses quoteAmount; MARKET SELL uses baseQuantity."
     }
   );
 
@@ -102,7 +102,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
       {
         name: CAPABILITIES_TOOL,
         title: "Server Capabilities Snapshot",
-        description: "Return the available local profile and Tool Registry capability snapshot.",
+        description: "Return a compact local server status. Tool schemas are available through the MCP tool list.",
         inputSchema: { type: "object", additionalProperties: false },
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
       },
@@ -121,12 +121,18 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
     try {
       const context = await createToolExecutionContext(profileName);
       if (request.params.name === CAPABILITIES_TOOL) {
+        const visibleTools = registry.list({ readOnly }).filter(isMcpVisible);
+        const toolCounts = visibleTools.reduce<Record<string, number>>((counts, tool) => {
+          counts[tool.operation] = (counts[tool.operation] ?? 0) + 1;
+          return counts;
+        }, {});
         return result({
           ok: true,
           data: {
             profile: { name: context.profile.name, host: new URL(context.profile.openApiBaseUrl).host, configVersion: context.profile.configVersion },
             readOnly,
-            capabilities: registry.capabilities(context, { readOnly }).filter((capability) => isMcpVisible(registry.byName(capability.name)))
+            serviceVersion: "0.1.11",
+            toolCounts
           }
         });
       }
@@ -143,7 +149,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean)
       }
       const tool = registry.byName(request.params.name, { readOnly });
       if (!isMcpVisible(tool)) {
-        throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Tool "${request.params.name}" is not available through MCP. Use market_get_symbol_overview, market_list_symbols, market_search_symbols, or market_get_symbol_info instead.`);
+        throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Tool "${request.params.name}" is not available through MCP. Use the corresponding bounded summary or symbol-browsing tool instead.`);
       }
       const data = await registry.execute(request.params.name, request.params.arguments ?? {}, context, { readOnly });
       return toMcpReadResult(formatMcpData(data));
