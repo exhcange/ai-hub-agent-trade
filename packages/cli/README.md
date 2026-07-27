@@ -33,6 +33,8 @@ Market BUY cannot guarantee an exact base-asset quantity. If the desired quantit
 
 The same unit rules apply to margin orders: use `margin order market-buy --quote-amount`, `margin order market-sell --base-quantity`, or `margin order limit --base-quantity --price`.
 
+The CLI does not provide `spot order place --volume`. It deliberately exposes `market-buy`, `market-sell`, and `limit` as separate commands so the asset unit cannot be ambiguous. Batch placement accepts a JSON array with the same semantic fields: `quoteAmount` for a market BUY and `baseQuantity` for a market SELL or limit order.
+
 Before an order preview is created, the CLI lazily loads `/sapi/v2/symbols` once per local profile and keeps the rule snapshot for one hour in memory and an isolated local cache. It rejects known quantity/price precision and limit-order minimum violations before asking for confirmation.
 
 ## Bounded market analysis
