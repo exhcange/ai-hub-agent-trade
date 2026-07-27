@@ -1,5 +1,6 @@
 ---
 name: ai-hub-spot-common
+version: "0.1.11"
 description: Use this Skill when a user asks for AI Hub public spot market data, including connection status, server time, symbols, ticker data, order-book depth, recent trades, or candlesticks. Use the local ai-hub CLI, require no credentials for these commands, and route account or state-changing requests to the focused Skill.
 ---
 

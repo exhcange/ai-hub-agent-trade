@@ -37,4 +37,4 @@ Read [_shared/preflight.md](_shared/preflight.md) only when setup or a configura
 
 ## Skill Format
 
-Every Skill contains portable YAML frontmatter with only `name` and `description`, followed by agent instructions. Detailed command parameters and examples are stored in its `references/` directory so that an agent loads them only when required.
+Every Skill contains portable YAML frontmatter with `name`, `version`, and `description`, followed by agent instructions. Detailed command parameters and examples are stored in its `references/` directory so that an agent loads them only when required.

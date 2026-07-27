@@ -1,5 +1,6 @@
 ---
 name: ai-hub-spot-account
+version: "0.1.11"
 description: Use this Skill when a user asks to inspect the configured AI Hub spot account, retrieve balances or account information, review Spot/Derivatives transfer history, or transfer assets between Spot and Derivatives. Use the local ai-hub CLI and require a configured credential profile. Account transfers require the mandatory preview and new manual confirmation boundary.
 ---
 
