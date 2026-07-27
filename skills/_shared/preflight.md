@@ -29,9 +29,9 @@ Use `--profile <profile>` on an API command when the desired profile is not the 
 For a state-changing operation:
 
 1. Collect every required field and show the intended action in plain language.
-2. Invoke the CLI command once. It prints an exact preview with `executed: false` and prompts for a new manual terminal response.
-3. Stop. Do not type, pipe, or generate `yes`; do not use `--confirm` because it is rejected.
-4. Wait for the user to inspect the preview and enter `yes` themselves in the interactive terminal. Any other response cancels the action.
+2. Invoke the CLI command once, optionally with `--prepare`. It prints an exact preview, a `confirmationId`, and `executed: false`, then exits.
+3. Stop. Do not type, pipe, generate, or infer a confirmation. Do not use `--confirm` because it is rejected.
+4. Wait for a new explicit user message. Only after that message, invoke `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once. Any failure, expiry, or context change consumes the preview and requires a new preview.
 5. Do not automatically retry an uncertain result. Query the relevant order or history endpoint first.
 
 For a local MCP client, use the same rule: prepare the action, show the exact preview, stop for a new user message, then confirm once. The original instruction, a previous confirmation, silence, and agent-generated text are never confirmation.

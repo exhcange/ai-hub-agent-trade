@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-order
-version: 0.1.9
+version: 0.1.10
 description: Use this Skill when a user asks to test, retrieve, list, buy, sell, place a limit order, batch-place, cancel, or batch-cancel supported AI Hub spot orders. Use the local ai-hub CLI with a configured credential profile. Every state-changing action requires an exact preview followed by a new manual user confirmation.
 ---
 
@@ -41,9 +41,9 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 2. Use `market-sell` only for a market SELL with `--base-quantity`: this is the exact base asset to sell.
 3. Use `limit` for a limit BUY or SELL with `--base-quantity` and `--price`.
 4. When the user asks to sell all available balance, query the available balance and the symbol rules first. Do not silently round a quantity that exceeds the supported precision; state the executable quantity and obtain a new user instruction for it.
-5. Run the write command once. It prints an exact preview and `executed: false`.
-6. Stop. The user must inspect the preview and enter `yes` as a new manual interactive-terminal response.
-7. Never type, pipe, generate, or infer `yes`. Never use `--confirm`; it is intentionally rejected.
+5. Run the write command once, optionally with `--prepare`. It prints an exact preview, a `confirmationId`, and `executed: false`, then exits.
+6. Stop and wait for a new explicit user message. Only then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` exactly once.
+7. Never type, pipe, generate, or infer a confirmation. Never use `--confirm`; it is intentionally rejected.
 8. Do not automatically retry an uncertain result. Query the order first.
 
 Read [references/order-commands.md](references/order-commands.md) for parameters, batch JSON, and examples.

@@ -1,5 +1,5 @@
 import { AiHubError } from "../errors.js";
-import type { ConfirmationService, PreparedAction } from "../confirmation.js";
+import type { ConfirmationPreparer, PreparedAction } from "../confirmation.js";
 import { confirmationContext } from "./execution-context.js";
 import { accountTools } from "./account-tools.js";
 import { assetTools } from "./asset-tools.js";
@@ -65,12 +65,12 @@ export class ToolRegistry {
     return tool.handler(validInput, context);
   }
 
-  public async prepareWrite(name: string, input: unknown, context: ToolExecutionContext, confirmations: ConfirmationService): Promise<PreparedAction> {
+  public async prepareWrite(name: string, input: unknown, context: ToolExecutionContext, confirmations: ConfirmationPreparer): Promise<PreparedAction> {
     const tool = this.byName(name);
     if (tool.operation !== "write" || !tool.writeSummary) throw new AiHubError("AI_HUB_TOOL_NOT_WRITE", `Tool "${name}" is not a confirmable write Tool.`);
     const validInput = tool.validate(input);
     const preflightInput = tool.preflight ? await tool.preflight(validInput, context) : validInput;
-    return confirmations.prepare({
+    return await confirmations.prepare({
       action: tool.name,
       payload: preflightInput,
       context: confirmationContext(context),

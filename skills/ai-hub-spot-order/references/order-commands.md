@@ -33,4 +33,12 @@ ai-hub spot order batch-cancel --symbol BTCUSDT --order-ids '["123456","123457"]
 
 When the requested available balance has more decimal places than the configured symbol supports, the CLI rejects it before confirmation. Do not round it down automatically: show the supported executable quantity and wait for a new user instruction.
 
-Every command that places or cancels an order is state-changing. After it shows a preview, the user—not an agent—must enter a new `yes` in the terminal.
+Every command that places or cancels an order is state-changing. After preview, the user—not an agent—must provide a new explicit confirmation message.
+
+For Agent-hosted CLI execution, the command exits after preview instead of waiting on terminal input. After a new explicit user message, run:
+
+```bash
+ai-hub confirm --confirmation-id <confirmation-id> --user-confirmation "yes"
+```
+
+Never run this command from the same user instruction that generated the preview.

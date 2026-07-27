@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { ConfirmationService } from "../src/index.js";
+import { ConfirmationService, FileConfirmationStore } from "../src/index.js";
 
 const context = {
   profile: "tenant-a",
@@ -30,4 +33,34 @@ test("confirmation is invalid when a credential version changes", () => {
     () => confirmations.confirm(prepared.confirmationId, "yes", { ...context, credentialVersion: "credential-v2" }),
     { code: "AI_HUB_CONFIRMATION_CONTEXT_CHANGED" }
   );
+});
+
+test("file confirmations survive a separate CLI process and are consumed atomically", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-hub-confirmation-"));
+  const store = new FileConfirmationStore(directory);
+  try {
+    const prepared = await store.prepare({ action: "spot_market_sell", payload: { symbol: "ethusdt", baseQuantity: "0.5" }, context, summary: { symbol: "ethusdt" } });
+    const files = await readdir(directory);
+    assert.equal(files.length, 1);
+    assert.equal((await stat(join(directory, files[0] ?? ""))).mode & 0o777, 0o600);
+
+    const restoredStore = new FileConfirmationStore(directory);
+    const confirmed = await restoredStore.confirm(prepared.confirmationId, "yes", context);
+    assert.deepEqual(confirmed, { action: "spot_market_sell", payload: { symbol: "ethusdt", baseQuantity: "0.5" }, requestHash: prepared.requestHash });
+    await assert.rejects(restoredStore.confirm(prepared.confirmationId, "yes", context), { code: "AI_HUB_CONFIRMATION_NOT_FOUND" });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("file confirmation rejects a changed profile context and consumes the preview", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-hub-confirmation-"));
+  const store = new FileConfirmationStore(directory);
+  try {
+    const prepared = await store.prepare({ action: "spot_market_sell", payload: { symbol: "ethusdt", baseQuantity: "0.5" }, context, summary: { symbol: "ethusdt" } });
+    await assert.rejects(store.confirm(prepared.confirmationId, "yes", { ...context, credentialVersion: "credential-v2" }), { code: "AI_HUB_CONFIRMATION_CONTEXT_CHANGED" });
+    await assert.rejects(store.confirm(prepared.confirmationId, "yes", context), { code: "AI_HUB_CONFIRMATION_NOT_FOUND" });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

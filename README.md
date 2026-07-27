@@ -17,7 +17,7 @@ Local CLI, MCP, and Skills for AI Hub spot trading integrations.
 
 For every state-changing operation, the caller must prepare the action, show the exact preview, and stop for a new explicit user confirmation message. Only after that new message may it call `confirm_action` with `confirmationId` and `userConfirmation`.
 
-`confirm_action` is one-time and expires after five minutes. The CLI rejects `--confirm` and requires a new interactive `yes` response after showing the preview. The MCP server and all Skills prohibit chaining prepare and confirm from one user instruction. The local protocol cannot prove who authored a message, so the Agent or host must preserve the new-user-message boundary.
+`confirm_action` is one-time and expires after five minutes. The CLI rejects `--confirm`; it persists a preview locally and requires a separate `ai-hub confirm --confirmation-id <id> --user-confirmation <new-user-message>` command. The MCP server and all Skills prohibit chaining prepare and confirm from one user instruction. The local protocol cannot prove who authored a message, so the Agent or host must preserve the new-user-message boundary.
 
 ## Command surface
 
