@@ -3,12 +3,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { validateProfileName } from "./config.js";
+import { DEFAULT_MCP_TOOLSET, parseMcpToolset, type McpToolset } from "./tools/mcp-toolset.js";
+import { DEFAULT_MCP_RESPONSE_MODE, parseMcpResponseMode, type McpResponseMode } from "./mcp-response-mode.js";
 
 export type McpClientId = "cursor" | "claude-desktop" | "claude-code" | "codex";
 
 export interface McpSetupOptions {
   client: McpClientId;
   profile?: string;
+  toolset?: McpToolset;
+  responseMode?: McpResponseMode;
   launch: McpServerLaunch;
 }
 
@@ -99,11 +103,11 @@ export function getMcpClientConfigPath(client: Exclude<McpClientId, "claude-code
   return path.join(value.xdgConfigHome ?? path.join(value.home, ".config"), "Claude", "claude_desktop_config.json");
 }
 
-function buildServerSpec(profile: string | undefined, launch: McpServerLaunch): McpServerSpec {
+function buildServerSpec(profile: string | undefined, toolset: McpToolset, responseMode: McpResponseMode, launch: McpServerLaunch): McpServerSpec {
   return {
     name: serverName(profile),
     command: launch.command,
-    args: [...launch.args, ...(profile ? ["--profile", profile] : [])]
+    args: [...launch.args, ...(profile ? ["--profile", profile] : []), "--toolset", toolset, "--response-mode", responseMode]
   };
 }
 
@@ -209,12 +213,14 @@ export function runMcpSetup(options: McpSetupOptions, value: McpSetupRuntime = r
     throw new Error(`Unknown MCP client "${options.client}". Supported clients: ${SUPPORTED_MCP_CLIENTS.join(", ")}.`);
   }
   const profile = options.profile ? validateProfileName(options.profile) : undefined;
-  adapter.install(buildServerSpec(profile, options.launch), value);
+  const toolset = parseMcpToolset(options.toolset ?? DEFAULT_MCP_TOOLSET);
+  const responseMode = parseMcpResponseMode(options.responseMode ?? DEFAULT_MCP_RESPONSE_MODE);
+  adapter.install(buildServerSpec(profile, toolset, responseMode, options.launch), value);
 }
 
 export function printMcpSetupUsage(): void {
   process.stdout.write(
-    `Usage: ${MCP_BINARY} setup --client <client> [--profile <name>]\n\n` +
+    `Usage: ${MCP_BINARY} setup --client <client> [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>]\n\n` +
     `Supported clients:\n` +
     SUPPORTED_MCP_CLIENTS.map((client) => `  ${client.padEnd(16)} ${MCP_CLIENT_NAMES[client]}`).join("\n") +
     "\n"

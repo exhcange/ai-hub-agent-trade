@@ -12,11 +12,11 @@ Usage:
   ai-hub config remove --profile <name>
   ai-hub confirm --confirmation-id <id> --user-confirmation <new-user-message> [--profile <name>]
   ai-hub market <ping|time|symbols|symbols-overview|symbols-list|symbols-search|symbol-info|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary> [options]
-  ai-hub account <get|asset-balance|transfer|transfer-history> [options]
+  ai-hub account <asset-balance> [options]
   ai-hub spot order <test|get|open|fills|market-buy|market-sell|sell-available|limit|cancel|batch-place|batch-cancel> [options]
   ai-hub margin order <get|open|fills|market-buy|market-sell|limit|cancel> [options]
-  ai-hub wallet <transfer|transfer-history|deposit-history|deposit-address|withdraw-address|transferable-assets|exchange-account|withdraw|withdraw-history> [options]
-  ai-hub sub-account <list|create|set-trading-status|assets|root-transfer|root-transfer-history|internal-transfer|internal-transfer-history|transfer-to-parent|parent-transfer-history> [options]
+  ai-hub wallet <transfer|transfer-history|deposit-history|deposit-address|withdraw-address|transferable-assets|withdraw|withdraw-history> [options]
+  ai-hub sub-account <list|create|set-trading-status|assets|root-transfer|root-transfer-history|internal-transfer|internal-transfer-history> [options]
   ai-hub sub-account api-key <list|set-ip|delete> [options]
 
 State-changing commands only create a preview and exit. After a new user confirmation, run ai-hub confirm with the returned confirmation ID.

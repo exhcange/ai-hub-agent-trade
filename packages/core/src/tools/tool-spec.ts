@@ -1,6 +1,7 @@
 import type { LoadedCredentials } from "../credential.js";
 import type { ResolvedProfile } from "../config.js";
 import type { AiHubSpotApi } from "../openapi.js";
+import type { ListLimit, UnpagedListLimit } from "./list-limit.js";
 
 export type ToolOperation = "read" | "write";
 export type ToolRiskLevel = "low" | "medium" | "high";
@@ -29,10 +30,12 @@ export interface ToolSpec<Input = Record<string, unknown>> {
   access: ToolAccess;
   operation: ToolOperation;
   riskLevel: ToolRiskLevel;
-  /** Whether this Tool is advertised to local MCP clients. CLI availability is controlled by cliPath. */
-  mcpVisible?: boolean;
   inputSchema: JsonSchema;
   errorCodes: readonly string[];
+  /** Shared CLI/MCP list pagination rule, when a Tool exposes a bounded list. */
+  listLimit?: Readonly<ListLimit>;
+  /** Response list capped by Core because the upstream endpoint has no page-size input. */
+  unpagedListLimit?: Readonly<UnpagedListLimit>;
   validate(input: unknown): Input;
   /** Optional asynchronous preflight performed before a write is presented for confirmation. */
   preflight?(input: Input, context: ToolExecutionContext): Promise<Input>;

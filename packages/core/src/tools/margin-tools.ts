@@ -1,6 +1,7 @@
 import { AiHubError } from "../errors.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalBoolean, optionalClientOrderId, optionalPositiveInteger, positiveDecimal, requiredEnum, signed, signedReadErrors, writeErrors } from "./tool-utils.js";
+import { STANDARD_LIST_LIMIT, listLimitSchema, normalizedListLimit } from "./list-limit.js";
 import { optionalString, requiredString, strictObject } from "./validation.js";
 import { preflightSymbolOrder } from "./symbol-rules.js";
 
@@ -100,12 +101,12 @@ function validateMarginOrderLookup(input: unknown): Record<string, unknown> {
 
 function validateMarginOpenOrders(input: unknown): Record<string, unknown> {
   const value = strictObject(input, ["symbol", "limit", "isolated"]);
-  return { ...(optionalString(value, "symbol") ? { symbol: optionalString(value, "symbol") } : {}), limit: optionalPositiveInteger(value, "limit", 100, 1000), ...(optionalBoolean(value, "isolated") !== undefined ? { isolated: optionalBoolean(value, "isolated") } : {}) };
+  return { ...(optionalString(value, "symbol") ? { symbol: optionalString(value, "symbol") } : {}), limit: normalizedListLimit(value, STANDARD_LIST_LIMIT), ...(optionalBoolean(value, "isolated") !== undefined ? { isolated: optionalBoolean(value, "isolated") } : {}) };
 }
 
 function validateMarginTrades(input: unknown): Record<string, unknown> {
   const value = strictObject(input, ["symbol", "limit", "fromId"]);
-  return { symbol: requiredString(value, "symbol"), limit: optionalPositiveInteger(value, "limit", 100, 1000), ...(optionalString(value, "fromId") ? { fromId: optionalString(value, "fromId") } : {}) };
+  return { symbol: requiredString(value, "symbol"), limit: normalizedListLimit(value, STANDARD_LIST_LIMIT), ...(optionalString(value, "fromId") ? { fromId: optionalString(value, "fromId") } : {}) };
 }
 
 export const marginTools: ToolSpec<any>[] = [
@@ -119,14 +120,16 @@ export const marginTools: ToolSpec<any>[] = [
   {
     name: "margin_get_open_orders", title: "Get Open Margin Orders", description: "Get signed open margin orders from the v2 margin API.", cliPath: ["margin", "order", "open"],
     module: "spot-margin", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 1000 }, isolated: { type: "boolean" } }, additionalProperties: false }, errorCodes: signedReadErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: listLimitSchema(STANDARD_LIST_LIMIT), isolated: { type: "boolean" } }, additionalProperties: false }, errorCodes: signedReadErrors,
+    listLimit: STANDARD_LIST_LIMIT,
     validate: validateMarginOpenOrders,
     handler: (input, context) => context.api.signedGet("/sapi/v2/margin/openOrders", input as Record<string, string | number | boolean | undefined>, signed(context))
   },
   {
     name: "margin_get_fills", title: "Get Margin Fills", description: "Get signed margin trade history from the v2 margin API.", cliPath: ["margin", "order", "fills"],
     module: "spot-margin", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 1000 }, fromId: { type: "string" } }, required: ["symbol"], additionalProperties: false }, errorCodes: signedReadErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: listLimitSchema(STANDARD_LIST_LIMIT), fromId: { type: "string" } }, required: ["symbol"], additionalProperties: false }, errorCodes: signedReadErrors,
+    listLimit: STANDARD_LIST_LIMIT,
     validate: validateMarginTrades,
     handler: (input, context) => context.api.signedGet("/sapi/v2/margin/myTrades", input as Record<string, string | number | undefined>, signed(context))
   },

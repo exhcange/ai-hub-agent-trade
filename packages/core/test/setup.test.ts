@@ -53,7 +53,7 @@ test("merges a Cursor MCP registration and keeps an existing server", async () =
   assert.deepEqual(config.mcpServers.existing, { command: "other" });
   assert.deepEqual(config.mcpServers["ai-hub-trade-mcp-tenant-a"], {
     command: "/usr/local/bin/node",
-    args: ["/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "tenant-a"]
+    args: ["/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "tenant-a", "--toolset", "default", "--response-mode", "compact"]
   });
   assert.equal(await readFile(`${configPath}.bak`, "utf8"), JSON.stringify({ mcpServers: { existing: { command: "other" } } }));
 });
@@ -128,11 +128,11 @@ test("uses the official client CLIs for Claude Code and Codex", async () => {
   assert.deepEqual(commands, [
     {
       command: "claude",
-      args: ["mcp", "add", "--scope", "user", "--transport", "stdio", "ai-hub-trade-mcp-default", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default"]
+      args: ["mcp", "add", "--scope", "user", "--transport", "stdio", "ai-hub-trade-mcp-default", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default", "--toolset", "default", "--response-mode", "compact"]
     },
     {
       command: "codex",
-      args: ["mcp", "add", "ai-hub-trade-mcp-default", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default"]
+      args: ["mcp", "add", "ai-hub-trade-mcp-default", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default", "--toolset", "default", "--response-mode", "compact"]
     }
   ]);
 });

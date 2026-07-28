@@ -9,7 +9,7 @@ English-language Skills for AI agents that operate supported AI Hub spot-account
 | [ai-hub-spot](ai-hub-spot/SKILL.md) | Routes supported market, account, order, wallet, and sub-account requests. | Depends on operation |
 | [ai-hub-spot-common](ai-hub-spot-common/SKILL.md) | Retrieves public market data and applies common operating rules. | No |
 | [ai-hub-spot-order](ai-hub-spot-order/SKILL.md) | Inspects, tests, places, and cancels spot orders. | Yes |
-| [ai-hub-spot-account](ai-hub-spot-account/SKILL.md) | Retrieves account information and account transfer history. | Yes |
+| [ai-hub-spot-account](ai-hub-spot-account/SKILL.md) | Retrieves one spot-asset balance. | Yes |
 | [ai-hub-spot-deposit-withdraw](ai-hub-spot-deposit-withdraw/SKILL.md) | Manages wallet information, transfers, deposits, and withdrawals. | Yes |
 | [ai-hub-spot-sub-account](ai-hub-spot-sub-account/SKILL.md) | Manages supported sub-account information and operations. | Yes |
 

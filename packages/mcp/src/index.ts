@@ -2,7 +2,7 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { AiHubError, printMcpSetupUsage, runMcpSetup, SUPPORTED_MCP_CLIENTS, type McpClientId } from "@ai-hub/agent-trade-core";
+import { AiHubError, parseMcpResponseMode, parseMcpToolset, printMcpSetupUsage, runMcpSetup, SUPPORTED_MCP_CLIENTS, type McpClientId } from "@ai-hub/agent-trade-core";
 import { createServer } from "./server.js";
 
 function readOption(args: string[], option: string): string | undefined {
@@ -17,8 +17,8 @@ function printUsage(): void {
   process.stdout.write(
     "AI Hub Agent Trade MCP\n\n" +
     "Usage:\n" +
-    "  ai-hub-trade-mcp [--profile <name>] [--read-only]\n" +
-    "  ai-hub-trade-mcp setup --client <client> [--profile <name>]\n\n" +
+    "  ai-hub-trade-mcp [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>] [--read-only]\n" +
+    "  ai-hub-trade-mcp setup --client <client> [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>]\n\n" +
     "The default command starts the local stdio MCP server.\n" +
     "Use setup to register it with Cursor, Claude Desktop, Claude Code, or Codex.\n"
   );
@@ -33,6 +33,8 @@ export async function main(argv: string[]): Promise<void> {
   if (argv[0] === "setup") {
     const client = readOption(argv.slice(1), "--client");
     const profile = readOption(argv.slice(1), "--profile");
+    const toolset = parseMcpToolset(readOption(argv.slice(1), "--toolset"));
+    const responseMode = parseMcpResponseMode(readOption(argv.slice(1), "--response-mode"));
     if (!client) {
       printMcpSetupUsage();
       return;
@@ -42,12 +44,14 @@ export async function main(argv: string[]): Promise<void> {
     }
     const entrypoint = process.argv[1];
     if (!entrypoint) throw new AiHubError("AI_HUB_UNEXPECTED_ERROR", "Cannot locate the local MCP server entrypoint for client setup.");
-    runMcpSetup({ client: client as McpClientId, profile, launch: { command: process.execPath, args: [entrypoint] } });
+    runMcpSetup({ client: client as McpClientId, profile, toolset, responseMode, launch: { command: process.execPath, args: [entrypoint] } });
     return;
   }
   const profileName = readOption(argv, "--profile");
   const readOnly = argv.includes("--read-only");
-  const server = createServer(profileName, readOnly);
+  const toolset = parseMcpToolset(readOption(argv, "--toolset"));
+  const responseMode = parseMcpResponseMode(readOption(argv, "--response-mode"));
+  const server = createServer(profileName, readOnly, toolset, responseMode);
   await server.connect(new StdioServerTransport());
 }
 

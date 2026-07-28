@@ -125,15 +125,29 @@ export function summarizeTickers(value: unknown, options: Required<Pick<MarketSu
     .map((asset) => bySymbol.get(`${asset}/${quoteAsset}`))
     .filter((item): item is JsonRecord => Boolean(item))
     .map(tickerItem);
-  const limit = options.limit;
+  // `limit` is a total Agent response budget, not a per-leaderboard limit.
+  // Keeping the whole response bounded prevents a broad ticker request from
+  // consuming the context that the summary tools are meant to protect.
+  const watchlistItems = watchlist.slice(0, options.limit);
+  const leaderboardBudget = Math.max(0, options.limit - watchlistItems.length);
+  const leaderboards = [
+    [...rows].sort(compareByNumericField("rose", "desc")),
+    [...rows].sort(compareByNumericField("rose", "asc")),
+    [...rows].sort(compareByNumericField("amount", "desc"))
+  ];
+  const leaderboardLimits = leaderboards.map((_items, index) => Math.floor((leaderboardBudget + 2 - index) / 3));
+  const topGainers = leaderboards[0]?.slice(0, leaderboardLimits[0]).map(tickerItem) ?? [];
+  const topLosers = leaderboards[1]?.slice(0, leaderboardLimits[1]).map(tickerItem) ?? [];
+  const topByQuoteVolume = leaderboards[2]?.slice(0, leaderboardLimits[2]).map(tickerItem) ?? [];
 
   return {
     quoteAsset,
     totalSymbols: rows.length,
-    watchlist,
-    topGainers: [...rows].sort(compareByNumericField("rose", "desc")).slice(0, limit).map(tickerItem),
-    topLosers: [...rows].sort(compareByNumericField("rose", "asc")).slice(0, limit).map(tickerItem),
-    topByQuoteVolume: [...rows].sort(compareByNumericField("amount", "desc")).slice(0, limit).map(tickerItem)
+    returnedSymbols: watchlistItems.length + topGainers.length + topLosers.length + topByQuoteVolume.length,
+    watchlist: watchlistItems,
+    topGainers,
+    topLosers,
+    topByQuoteVolume
   };
 }
 
@@ -240,6 +254,20 @@ export function listSymbols(value: unknown, options: Required<Pick<MarketSummary
     offset: options.offset,
     limit: options.limit,
     nextOffset: nextOffset < matches.length ? nextOffset : null,
+    items
+  };
+}
+
+/** Lists a bounded page of complete symbol metadata for explicit full-toolset use. */
+export function listFullSymbols(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit">> & { offset: number }): JsonRecord {
+  const rows = sortSymbolMatches(parsedSymbolRows(value));
+  const items = rows.slice(options.offset, options.offset + options.limit).map(fullSymbolItem);
+  const nextOffset = options.offset + items.length;
+  return {
+    totalSymbols: rows.length,
+    offset: options.offset,
+    limit: options.limit,
+    nextOffset: nextOffset < rows.length ? nextOffset : null,
     items
   };
 }

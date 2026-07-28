@@ -6,19 +6,19 @@ All commands are read-only and use the OpenAPI URL from the selected local profi
 | --- | --- | --- |
 | `ai-hub market ping` | None | `--profile` |
 | `ai-hub market time` | None | `--profile` |
-| `ai-hub market symbols` | None | `--profile` |
-| `ai-hub market symbols-overview` | None | `--limit` (1–20), `--profile` |
+| `ai-hub market symbols` | None | `--offset`, `--limit` (1–50), `--profile` |
+| `ai-hub market symbols-overview` | None | `--limit` (1–50), `--profile` |
 | `ai-hub market symbols-list` | None | `--quote-asset`, `--offset`, `--limit` (1–50), `--profile` |
-| `ai-hub market symbols-search` | `--query` | `--quote-asset`, `--limit` (1–20), `--profile` |
+| `ai-hub market symbols-search` | `--query` | `--quote-asset`, `--limit` (1–50), `--profile` |
 | `ai-hub market symbol-info` | `--symbol` | `--profile` |
 | `ai-hub market ticker` | `--symbol` or `--symbols` | `--time-zone`, `--profile` |
-| `ai-hub market ticker-summary` | None | `--quote-asset`, `--limit` (1–20), `--profile` |
-| `ai-hub market depth` | `--symbol` | `--limit` (1–100), `--profile` |
-| `ai-hub market depth-summary` | `--symbol` | `--limit` (1–20), `--profile` |
-| `ai-hub market trades` | `--symbol` | `--limit` (1–100), `--profile` |
+| `ai-hub market ticker-summary` | None | `--quote-asset`, `--limit` (1–50), `--profile` |
+| `ai-hub market depth` | `--symbol` | `--limit` (1–50), `--profile` |
+| `ai-hub market depth-summary` | `--symbol` | `--limit` (1–50), `--profile` |
+| `ai-hub market trades` | `--symbol` | `--limit` (1–50), `--profile` |
 | `ai-hub market trades-summary` | `--symbol` | `--limit` (1–50), `--profile` |
-| `ai-hub market klines` | `--symbol`, `--interval` | `--start-time`, `--end-time`, `--timezone`, `--limit` (1–300), `--profile` |
-| `ai-hub market klines-summary` | `--symbol` | `--interval` (defaults to `60min`), `--start-time`, `--end-time`, `--timezone`, `--limit` (1–100), `--profile` |
+| `ai-hub market klines` | `--symbol`, `--interval` | `--start-time`, `--end-time`, `--timezone`, `--limit` (1–50), `--profile` |
+| `ai-hub market klines-summary` | `--symbol` | `--interval` (defaults to `60min`), `--start-time`, `--end-time`, `--timezone`, `--limit` (1–50), `--profile` |
 
 Examples:
 
@@ -42,6 +42,6 @@ ai-hub market klines-summary --symbol BTCUSDT --interval 60min --limit 20
 - CLI accepts common aliases (`1h`, `1d`, `1w`, and minute shorthand) and normalizes them before calling OpenAPI. Unsupported periods such as `4h` fail locally with `AI_HUB_INVALID_ARGUMENT`.
 - `--start-time` and `--end-time` are inclusive Unix timestamps in milliseconds. `start-time` cannot be after `end-time`.
 - `--timezone` is optional (`UTC+08` by default); daily, weekly, and monthly data may vary by timezone.
-- The upstream API returns newest-first candles and supports at most 300 raw rows. The summary command is deliberately limited to 100.
+- The CLI returns newest-first candles with a maximum of 50 rows in both raw and summary commands.
 
-For a generic pair list, use `ai-hub market symbols-overview` first. Use `symbols-list` for a paged quote-asset list, `symbols-search --query <asset>` for a keyword lookup, and `symbol-info` only when the exact symbol's precision or minimum rules are needed. Use `symbols` only when complete raw symbol metadata is explicitly needed.
+For a generic pair list, use `ai-hub market symbols-overview` first. Use `symbols-list` for a paged quote-asset list, `symbols-search --query <asset>` for a keyword lookup, and `symbol-info` only when the exact symbol's precision or minimum rules are needed. `symbols` returns complete metadata in pages of at most 50 rows.

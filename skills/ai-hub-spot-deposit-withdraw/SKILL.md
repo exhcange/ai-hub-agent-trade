@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-deposit-withdraw
-version: "0.1.11"
+version: "0.1.12"
 description: Use this Skill when a user asks about AI Hub wallet assets, deposit history or addresses, withdrawal addresses or history, transferable assets, wallet transfer history, wallet transfers, or withdrawals. Use the local ai-hub CLI with a configured credential profile. Wallet transfers and withdrawals require the mandatory preview and new manual confirmation boundary.
 ---
 
@@ -8,7 +8,7 @@ description: Use this Skill when a user asks about AI Hub wallet assets, deposit
 
 Use this Skill for supported wallet operations. Treat asset balances, addresses, and transaction history as sensitive user data. Do not fabricate an address, network detail, account type, or transfer direction.
 
-Account types are fixed: `1` Spot, `2` Isolated Margin, `3` Cross Margin, `4` C2C, and `5` Derivatives. Account type `2` is never Derivatives. Route a Spot-to-Derivatives request to `ai-hub account transfer` with `EXCHANGE -> FUTURE`. A wallet transfer involving type `2` requires the isolated-margin trading pair in `symbol`.
+Account types are fixed: `1` Spot, `2` Isolated Margin, `3` Cross Margin, `4` C2C, and `5` Derivatives. Account type `2` is never Derivatives. A wallet transfer involving type `2` requires the isolated-margin trading pair in `symbol`.
 
 ## Prerequisites
 
@@ -16,11 +16,14 @@ If the selected profile is already configured, run the focused command directly.
 
 For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). In particular, a withdrawal-history permission diagnosis requires an API-key permission change, not a retry.
 
+## Fast Path
+
+When one read command has complete parameters, run it directly. When a transfer or withdrawal has all required fields, generate exactly one preview and stop for a new user confirmation. Load the reference only for missing/ambiguous fields, setup, business errors, or uncertain write outcomes.
+
 ## Command Index
 
 | Command | Operation | Description |
 | --- | --- | --- |
-| `ai-hub wallet exchange-account` | Read | Get exchange account assets. |
 | `ai-hub wallet transferable-assets` | Read | Get assets transferable from an account type. |
 | `ai-hub wallet transfer-history` | Read | Get universal transfer history. |
 | `ai-hub wallet deposit-history` | Read | Get deposit history. |
@@ -47,4 +50,4 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 7. Stop and wait for a new explicit user message. Then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once; never enter, pipe, or infer it.
 8. If the write outcome is unknown, query its relevant history before any retry.
 
-Read [references/wallet-commands.md](references/wallet-commands.md) for parameters and examples.
+Only read [references/wallet-commands.md](references/wallet-commands.md) when Fast Path does not apply.

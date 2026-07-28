@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-order
-version: "0.1.11"
+version: "0.1.12"
 description: Use this Skill when a user asks to test, retrieve, list, buy, sell, place a limit order, batch-place, cancel, or batch-cancel supported AI Hub spot orders. Use the local ai-hub CLI with a configured credential profile. Every state-changing action requires an exact preview followed by a new manual user confirmation.
 ---
 
@@ -13,6 +13,10 @@ Use this Skill only for supported spot order operations. Do not infer an order s
 If the selected profile is already configured, run the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error. Confirm that the user has supplied all mandatory order fields.
 
 For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Never retry a failed or unknown write until the diagnosis permits it and the user starts a new confirmation flow.
+
+## Fast Path
+
+When a read request has its complete command parameters, run it directly. When a write request has all required fields, run the exact command once to produce its preview, then stop. Read [references/order-commands.md](references/order-commands.md) only for missing or ambiguous fields, a business error, or an unknown write result; never bypass the new-user-confirmation boundary.
 
 ## Command Index
 
@@ -47,4 +51,4 @@ For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md
 7. Never type, pipe, generate, or infer a confirmation. Never use `--confirm`; it is intentionally rejected.
 8. Do not automatically retry an uncertain result. Query the order first.
 
-Read [references/order-commands.md](references/order-commands.md) for parameters, batch JSON, and examples.
+Only read [references/order-commands.md](references/order-commands.md) when Fast Path does not apply.

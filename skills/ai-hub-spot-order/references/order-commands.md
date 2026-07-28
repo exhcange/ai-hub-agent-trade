@@ -6,8 +6,8 @@ All commands require a profile with locally configured credentials. Use explicit
 | --- | --- | --- |
 | `ai-hub spot order test` | `--symbol`, `--side`, `--type`, plus `--quote-amount` for `MARKET BUY` or `--base-quantity` for `MARKET SELL`/`LIMIT` | `--price` for `LIMIT`, `--time-in-force`, `--new-client-order-id`, `--recv-window`, `--profile` |
 | `ai-hub spot order get` | `--symbol`, `--order-id` | `--new-client-order-id`, `--profile` |
-| `ai-hub spot order open` | None | `--symbol`, `--limit` (1–1000), `--profile` |
-| `ai-hub spot order fills` | `--symbol` | `--limit` (1–1000), `--from-id`, `--profile` |
+| `ai-hub spot order open` | None | `--symbol`, `--limit` (1–50), `--profile` |
+| `ai-hub spot order fills` | `--symbol` | `--limit` (1–50), `--from-id`, `--profile` |
 | `ai-hub spot order market-buy` | `--symbol`, `--quote-amount` | `--new-client-order-id`, `--recv-window`, `--profile` |
 | `ai-hub spot order market-sell` | `--symbol`, `--base-quantity` | `--new-client-order-id`, `--recv-window`, `--profile` |
 | `ai-hub spot order sell-available` | `--symbol` | `--new-client-order-id`, `--recv-window`, `--profile` |

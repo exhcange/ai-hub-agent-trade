@@ -2,6 +2,7 @@ import { AiHubError } from "../errors.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalPositiveInteger, positiveDecimal, signed, signedReadErrors, writeErrors } from "./tool-utils.js";
 import { optionalString, requiredString, strictObject } from "./validation.js";
+import { STANDARD_PAGE_SIZE, listLimitSchema, normalizedListLimit } from "./list-limit.js";
 
 function fields(input: unknown, allowed: readonly string[], required: readonly string[] = []): Record<string, unknown> {
   const value = strictObject(input, allowed);
@@ -12,7 +13,7 @@ function fields(input: unknown, allowed: readonly string[], required: readonly s
 }
 
 function pages(value: Record<string, unknown>): Record<string, unknown> {
-  return { page: optionalPositiveInteger(value, "page", 1), pageSize: optionalPositiveInteger(value, "pageSize", 20, 100) };
+  return { page: optionalPositiveInteger(value, "page", 1), pageSize: normalizedListLimit(value, STANDARD_PAGE_SIZE) };
 }
 
 function transfer(value: Record<string, unknown>, requireSubUid: boolean): Record<string, unknown> {
@@ -24,7 +25,9 @@ function transfer(value: Record<string, unknown>, requireSubUid: boolean): Recor
 export const subAccountTools: ToolSpec<any>[] = [
   {
     name: "sub_account_list", title: "List Sub-accounts", description: "Get enabled sub-accounts under the main account.", cliPath: ["sub-account", "list"], module: "spot-sub-account", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", additionalProperties: false }, errorCodes: signedReadErrors, validate: (input) => { strictObject(input, []); return {}; }, handler: (_input, context) => context.api.signedPost("/sapi/v1/sub_user/get_sub_user_List", {}, signed(context))
+    inputSchema: { type: "object", additionalProperties: false }, errorCodes: signedReadErrors,
+    unpagedListLimit: { path: ["data", "subUserList"] },
+    validate: (input) => { strictObject(input, []); return {}; }, handler: (_input, context) => context.api.signedPost("/sapi/v1/sub_user/get_sub_user_List", {}, signed(context))
   },
   {
     name: "sub_account_create", title: "Create Sub-account", description: "Create a virtual sub-account after confirmation.", cliPath: ["sub-account", "create"], module: "spot-sub-account", access: "signed", operation: "write", riskLevel: "high",
@@ -38,7 +41,9 @@ export const subAccountTools: ToolSpec<any>[] = [
   },
   {
     name: "sub_account_get_api_key_ips", title: "Get Sub-account API Key IPs", description: "Get a sub-account API key whitelist.", cliPath: ["sub-account", "api-key", "list"], module: "spot-sub-account", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { subUid: { type: "string" } }, required: ["subUid"], additionalProperties: false }, errorCodes: signedReadErrors, validate: (input) => fields(input, ["subUid"], ["subUid"]), handler: (input, context) => context.api.signedPost("/sapi/v1/sub_user/sub_account_api/list", input as Record<string, unknown>, signed(context))
+    inputSchema: { type: "object", properties: { subUid: { type: "string" } }, required: ["subUid"], additionalProperties: false }, errorCodes: signedReadErrors,
+    unpagedListLimit: { path: ["data", "apiList"] },
+    validate: (input) => fields(input, ["subUid"], ["subUid"]), handler: (input, context) => context.api.signedPost("/sapi/v1/sub_user/sub_account_api/list", input as Record<string, unknown>, signed(context))
   },
   {
     name: "sub_account_update_api_key_ips", title: "Update Sub-account API Key IPs", description: "Update a sub-account API key IP whitelist after confirmation.", cliPath: ["sub-account", "api-key", "set-ip"], module: "spot-sub-account", access: "signed", operation: "write", riskLevel: "high",
@@ -53,6 +58,7 @@ export const subAccountTools: ToolSpec<any>[] = [
   {
     name: "sub_account_get_assets", title: "Get Sub-account Assets", description: "Query sub-account assets by account type.", cliPath: ["sub-account", "assets"], module: "spot-sub-account", access: "signed", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { subUid: { type: "string" }, accountType: { type: "string" }, type: { type: "string" } }, required: ["subUid", "accountType"], additionalProperties: false }, errorCodes: signedReadErrors,
+    unpagedListLimit: { path: ["data", "accountList"] },
     validate: (input) => fields(input, ["subUid", "accountType", "type"], ["subUid", "accountType"]), handler: (input, context) => context.api.signedPost("/sapi/v1/sub_user/asset/account", input as Record<string, unknown>, signed(context))
   },
   {
@@ -62,7 +68,8 @@ export const subAccountTools: ToolSpec<any>[] = [
   },
   {
     name: "sub_account_get_root_transfer_history", title: "Get Root/Sub Transfer History", description: "Query root and sub-account transfer history.", cliPath: ["sub-account", "root-transfer-history"], module: "spot-sub-account", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { subUid: { type: "string" }, coinSymbol: { type: "string" }, page: { type: "integer" }, pageSize: { type: "integer" } }, required: ["subUid", "coinSymbol"], additionalProperties: false }, errorCodes: signedReadErrors,
+    inputSchema: { type: "object", properties: { subUid: { type: "string" }, coinSymbol: { type: "string" }, page: { type: "integer", minimum: 1 }, pageSize: listLimitSchema(STANDARD_PAGE_SIZE) }, required: ["subUid", "coinSymbol"], additionalProperties: false }, errorCodes: signedReadErrors,
+    listLimit: STANDARD_PAGE_SIZE,
     validate: (input) => { const value = strictObject(input, ["subUid", "coinSymbol", "page", "pageSize"]); return { subUid: requiredString(value, "subUid"), coinSymbol: requiredString(value, "coinSymbol"), ...pages(value) }; }, handler: (input, context) => context.api.signedPost("/sapi/v1/sub_user/asset/root_transfer_query", input as Record<string, unknown>, signed(context))
   },
   {
@@ -72,17 +79,8 @@ export const subAccountTools: ToolSpec<any>[] = [
   },
   {
     name: "sub_account_get_internal_transfer_history", title: "Get Sub-account Internal Transfer History", description: "Query internal sub-account transfer history.", cliPath: ["sub-account", "internal-transfer-history"], module: "spot-sub-account", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { subUid: { type: "string" }, type: { type: "string" }, accountType: { type: "string" }, coinSymbol: { type: "string" }, page: { type: "integer" }, pageSize: { type: "integer" } }, required: ["subUid", "type", "accountType", "coinSymbol"], additionalProperties: false }, errorCodes: signedReadErrors,
+    inputSchema: { type: "object", properties: { subUid: { type: "string" }, type: { type: "string" }, accountType: { type: "string" }, coinSymbol: { type: "string" }, page: { type: "integer", minimum: 1 }, pageSize: listLimitSchema(STANDARD_PAGE_SIZE) }, required: ["subUid", "type", "accountType", "coinSymbol"], additionalProperties: false }, errorCodes: signedReadErrors,
+    listLimit: STANDARD_PAGE_SIZE,
     validate: (input) => { const value = strictObject(input, ["subUid", "type", "accountType", "coinSymbol", "page", "pageSize"]); return { subUid: requiredString(value, "subUid"), type: requiredString(value, "type"), accountType: requiredString(value, "accountType"), coinSymbol: requiredString(value, "coinSymbol"), ...pages(value) }; }, handler: (input, context) => context.api.signedPost("/sapi/v1/sub_user/asset/transfer_query", input as Record<string, unknown>, signed(context))
   },
-  {
-    name: "sub_account_transfer_to_parent", title: "Transfer From Sub-account to Parent", description: "Transfer assets to the parent account after confirmation.", cliPath: ["sub-account", "transfer-to-parent"], module: "spot-sub-account", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { coinSymbol: { type: "string" }, amount: { type: "string" } }, required: ["coinSymbol", "amount"], additionalProperties: false }, errorCodes: writeErrors,
-    validate: (input) => { const value = strictObject(input, ["coinSymbol", "amount"]); return transfer(value, false); }, handler: (input, context) => context.api.signedPost("/sapi/v1/asset/subaccount/transfer", input as Record<string, unknown>, signed(context)), writeSummary: (input) => ({ action: "sub_account_transfer_to_parent", ...(input as Record<string, unknown>) })
-  },
-  {
-    name: "sub_account_get_parent_transfer_history", title: "Get Parent Transfer History", description: "Query transfers between this sub-account and its parent.", cliPath: ["sub-account", "parent-transfer-history"], module: "spot-sub-account", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { coinSymbol: { type: "string" }, page: { type: "integer" }, pageSize: { type: "integer" } }, required: ["coinSymbol"], additionalProperties: false }, errorCodes: signedReadErrors,
-    validate: (input) => { const value = strictObject(input, ["coinSymbol", "page", "pageSize"]); return { coinSymbol: requiredString(value, "coinSymbol"), ...pages(value) }; }, handler: (input, context) => context.api.signedPost("/sapi/v1/asset/subaccount/transfer_query", input as Record<string, unknown>, signed(context))
-  }
 ];

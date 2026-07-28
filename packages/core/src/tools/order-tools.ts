@@ -5,6 +5,7 @@ import { requireAvailableBalance } from "./account-balance.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { requiredEnum } from "./tool-utils.js";
 import { optionalInteger, optionalString, requiredString, strictObject } from "./validation.js";
+import { STANDARD_LIST_LIMIT, listLimitSchema, normalizedListLimit } from "./list-limit.js";
 import { floorDecimal, getSymbolRule, isAtLeastDecimal, preflightSymbolOrder, subtractNonNegativeDecimal } from "./symbol-rules.js";
 
 const signedReadErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_CREDENTIAL_NOT_CONFIGURED", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
@@ -283,15 +284,17 @@ export const orderTools: ToolSpec<any>[] = [
   {
     name: "spot_get_open_orders", title: "Get Spot Open Orders", description: "Get current signed spot orders.", cliPath: ["spot", "order", "open"],
     module: "spot-order", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 1000 } }, additionalProperties: false }, errorCodes: signedReadErrors,
-    validate: (input) => { const value = strictObject(input, ["symbol", "limit"]); return { symbol: optionalString(value, "symbol"), limit: optionalInteger(value, "limit", 100, 1, 1000) }; },
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: listLimitSchema(STANDARD_LIST_LIMIT) }, additionalProperties: false }, errorCodes: signedReadErrors,
+    listLimit: STANDARD_LIST_LIMIT,
+    validate: (input) => { const value = strictObject(input, ["symbol", "limit"]); return { symbol: optionalString(value, "symbol"), limit: normalizedListLimit(value, STANDARD_LIST_LIMIT) }; },
     handler: (input, context) => context.api.getOpenOrders(input as { symbol?: string; limit?: number }, signed(context))
   },
   {
     name: "spot_get_fills", title: "Get Spot Fills", description: "Get signed spot fills for one symbol.", cliPath: ["spot", "order", "fills"],
     module: "spot-order", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 1000 }, fromId: { type: "string" } }, required: ["symbol"], additionalProperties: false }, errorCodes: signedReadErrors,
-    validate: (input) => { const value = strictObject(input, ["symbol", "limit", "fromId"]); return { symbol: requiredString(value, "symbol"), limit: optionalInteger(value, "limit", 100, 1, 1000), fromId: optionalString(value, "fromId") }; },
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: listLimitSchema(STANDARD_LIST_LIMIT), fromId: { type: "string" } }, required: ["symbol"], additionalProperties: false }, errorCodes: signedReadErrors,
+    listLimit: STANDARD_LIST_LIMIT,
+    validate: (input) => { const value = strictObject(input, ["symbol", "limit", "fromId"]); return { symbol: requiredString(value, "symbol"), limit: normalizedListLimit(value, STANDARD_LIST_LIMIT), fromId: optionalString(value, "fromId") }; },
     handler: (input, context) => context.api.getMyTrades(input as { symbol: string; limit?: number; fromId?: string }, signed(context))
   },
   {

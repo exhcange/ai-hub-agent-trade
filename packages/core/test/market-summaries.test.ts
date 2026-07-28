@@ -9,13 +9,14 @@ test("ticker summary returns only the requested quote asset and bounded leaderbo
     { symbol: "ETH/USDT", last: "3000", rose: "-0.02", amount: "200", vol: "2", high: "3100", low: "2900", time: 1 },
     { symbol: "SOL/USDT", last: "100", rose: "0.06", amount: "150", vol: "3", high: "110", low: "90", time: 1 },
     { symbol: "BTC/USDC", last: "65001", rose: "0.90", amount: "999", vol: "1", high: "66001", low: "64001", time: 1 }
-  ], { quoteAsset: "USDT", limit: 2 });
+  ], { quoteAsset: "USDT", limit: 5 });
   assert.equal(summary.totalSymbols, 3);
+  assert.equal(summary.returnedSymbols, 5);
   assert.deepEqual(summary.topGainers, [
-    { symbol: "SOL/USDT", last: "100", rose: "0.06", amount: "150", vol: "3", high: "110", low: "90", time: "1" },
-    { symbol: "BTC/USDT", last: "65000", rose: "0.01", amount: "100", vol: "1", high: "66000", low: "64000", time: "1" }
+    { symbol: "SOL/USDT", last: "100", rose: "0.06", amount: "150", vol: "3", high: "110", low: "90", time: "1" }
   ]);
-  assert.equal((summary.topByQuoteVolume as unknown[]).length, 2);
+  assert.deepEqual(summary.topLosers, [{ symbol: "ETH/USDT", last: "3000", rose: "-0.02", amount: "200", vol: "2", high: "3100", low: "2900", time: "1" }]);
+  assert.equal((summary.topByQuoteVolume as unknown[]).length, 0);
 });
 
 test("symbol browse, search, and exact-info responses are intentionally separate and bounded", () => {
@@ -79,7 +80,7 @@ test("registry exposes bounded market tools and keeps unfiltered ticker requests
     () => registry.byName("market_search_symbols").validate({}),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
   );
-  assert.equal((registry.byName("market_search_symbols").validate({ query: "BTC" }) as { limit: number }).limit, 10);
+  assert.equal((registry.byName("market_search_symbols").validate({ query: "BTC" }) as { limit: number }).limit, 20);
   assert.throws(
     () => registry.byName("market_get_ticker").validate({}),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
@@ -88,7 +89,5 @@ test("registry exposes bounded market tools and keeps unfiltered ticker requests
     () => registry.byName("market_get_ticker").validate({ symbol: "BTCUSDT", symbols: "ETHUSDT" }),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
   );
-  for (const name of ["market_get_depth", "market_get_trades", "market_get_klines"]) {
-    assert.equal(registry.byName(name).mcpVisible, false);
-  }
+  for (const name of ["market_get_symbols", "market_get_depth", "market_get_trades", "market_get_klines"]) assert.equal(registry.byName(name).operation, "read");
 });

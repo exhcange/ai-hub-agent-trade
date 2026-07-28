@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-common
-version: "0.1.11"
+version: "0.1.12"
 description: Use this Skill when a user asks for AI Hub public spot market data, including connection status, server time, symbols, ticker data, order-book depth, recent trades, or candlesticks. Use the local ai-hub CLI, require no credentials for these commands, and route account or state-changing requests to the focused Skill.
 ---
 
@@ -11,6 +11,10 @@ Use this Skill for public spot market information. All commands in this Skill ar
 ## Prerequisites
 
 Run public commands directly with the configured default profile. Read [../_shared/preflight.md](../_shared/preflight.md) only if the request expands to authenticated work and the CLI reports a profile or credential error.
+
+## Fast Path
+
+For a complete public-market request, run the exact CLI command immediately. Do not read [references/market-commands.md](references/market-commands.md) unless a required parameter is missing, the request is ambiguous, or the CLI returns an error.
 
 ## Command Index
 
@@ -42,4 +46,4 @@ Run public commands directly with the configured default profile. Read [../_shar
 
 If a public endpoint returns `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Use its `reason` and `suggestedAction`; do not infer a cause from the code alone.
 
-Read [references/market-commands.md](references/market-commands.md) for parameters and examples.
+Only read [references/market-commands.md](references/market-commands.md) when Fast Path does not apply.

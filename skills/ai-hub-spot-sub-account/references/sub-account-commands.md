@@ -1,6 +1,6 @@
 # Sub-account Commands
 
-All commands require a profile with locally configured credentials. `page-size` and `limit` are positive integers; a sub-account ID is supplied through `--sub-uid`.
+All commands require a profile with locally configured credentials. `page-size` and `limit` default to 20 and cannot exceed 50; a sub-account ID is supplied through `--sub-uid`.
 
 | Command | Required options | Optional options |
 | --- | --- | --- |
@@ -9,14 +9,12 @@ All commands require a profile with locally configured credentials. `page-size` 
 | `ai-hub sub-account api-key list` | `--sub-uid` | `--profile` |
 | `ai-hub sub-account root-transfer-history` | `--sub-uid`, `--coin-symbol` | `--page`, `--page-size`, `--profile` |
 | `ai-hub sub-account internal-transfer-history` | `--sub-uid`, `--type`, `--account-type`, `--coin-symbol` | `--page`, `--page-size`, `--profile` |
-| `ai-hub sub-account parent-transfer-history` | `--coin-symbol` | `--page`, `--page-size`, `--profile` |
 | `ai-hub sub-account create` | `--sub-user-email` | `--profile` |
 | `ai-hub sub-account set-trading-status` | `--sub-uid`, `--type`, `--status` | `--profile` |
 | `ai-hub sub-account api-key set-ip` | `--sub-uid`, `--sub-account-api-key`, `--status` | `--ip-address`, `--profile` |
 | `ai-hub sub-account api-key delete` | `--sub-uid`, `--sub-account-api-key` | `--profile` |
 | `ai-hub sub-account root-transfer` | `--sub-uid`, `--coin-symbol`, `--amount`, `--type` | `--profile` |
 | `ai-hub sub-account internal-transfer` | `--sub-uid`, `--coin-symbol`, `--amount`, `--type`, `--account-type` | `--symbol`, `--profile` |
-| `ai-hub sub-account transfer-to-parent` | `--coin-symbol`, `--amount` | `--profile` |
 
 Examples:
 
@@ -32,4 +30,4 @@ ai-hub sub-account root-transfer --sub-uid 10001 --coin-symbol USDT --amount 10 
 
 For `set-trading-status`, `type` is one of `lever`, `etf`, or `deposit`; `status` is `0` or `1`. For `api-key set-ip`, `status` is `1` or `2`; status `2` additionally requires `--ip-address`. `create` accepts a value of at most five characters for `--sub-user-email`.
 
-All write commands print a preview and exit before execution. After a new explicit user message, run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once. Do not type, pipe, or infer the confirmation.
+The unpaged sub-account, API-key, and asset-list responses are capped to 50 entries. If capped, the response explicitly marks that no continuation parameter is available. All write commands print a preview and exit before execution. After a new explicit user message, run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once. Do not type, pipe, or infer the confirmation.

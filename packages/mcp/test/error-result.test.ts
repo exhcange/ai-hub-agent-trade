@@ -35,11 +35,33 @@ test("MCP normalizes every read response to a stable, type-discriminated shape",
   assert.deepEqual(formatMcpData(null), { dataType: "null", value: null });
 });
 
-test("MCP returns normalized reads as protocol structured content and JSON text", () => {
+test("MCP compact reads avoid duplicating structured data in text", () => {
   const data = formatMcpData([{ symbol: "BTC/USDT" }]);
   const result = toMcpReadResult(data);
   assert.deepEqual(result.structuredContent, { ok: true, data });
   const content = result.content[0];
   assert.equal(content?.type, "text");
-  assert.deepEqual(JSON.parse(content?.text ?? "{}"), { ok: true, data });
+  assert.deepEqual(JSON.parse(content?.text ?? "{}"), { ok: true, data: { dataType: "array", count: 1, summary: "Full result is available in structuredContent." } });
+});
+
+test("MCP compact object reads retain only pagination metadata in text", () => {
+  const data = formatMcpData({ totalSymbols: 500, items: [{ symbol: "BTC/USDT" }], nextOffset: 20 });
+  const result = toMcpReadResult(data);
+  assert.deepEqual(JSON.parse((result.content[0] as { text: string }).text), {
+    ok: true,
+    data: {
+      dataType: "object",
+      returnedCount: 1,
+      totalCount: 500,
+      nextOffset: 20,
+      summary: "Full result is available in structuredContent."
+    }
+  });
+  assert.deepEqual(result.structuredContent, { ok: true, data });
+});
+
+test("MCP compat reads preserve the former JSON text payload", () => {
+  const data = formatMcpData([{ symbol: "BTC/USDT" }]);
+  const result = toMcpReadResult(data, "compat");
+  assert.deepEqual(JSON.parse((result.content[0] as { text: string }).text), { ok: true, data });
 });

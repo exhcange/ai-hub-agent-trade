@@ -7,6 +7,7 @@ import { marketTools } from "./market-tools.js";
 import { marginTools } from "./margin-tools.js";
 import { orderTools } from "./order-tools.js";
 import { subAccountTools } from "./sub-account-tools.js";
+import { truncateUnpagedListResponse, withListLimit } from "./list-limit.js";
 import type { ToolExecutionContext, ToolSpec } from "./tool-spec.js";
 
 export interface ToolListOptions {
@@ -23,16 +24,26 @@ export interface ToolCapability {
 
 const allTools = [...marketTools, ...accountTools, ...orderTools, ...marginTools, ...assetTools, ...subAccountTools];
 
+function assertListLimitSchema(tool: ToolSpec): void {
+  const limit = tool.listLimit;
+  if (!limit) return;
+  const property = tool.inputSchema.properties?.[limit.field] as { type?: unknown; minimum?: unknown; maximum?: unknown } | undefined;
+  if (!property || property.type !== "integer" || property.minimum !== 1 || property.maximum !== limit.maximum) {
+    throw new AiHubError("AI_HUB_TOOL_LIST_LIMIT_INVALID", `Tool "${tool.name}" must expose its declared ${limit.field} range in inputSchema.`);
+  }
+}
+
 export class ToolRegistry {
   private readonly toolsByName = new Map<string, ToolSpec>();
   private readonly toolsByCliPath = new Map<string, ToolSpec>();
 
   public constructor(tools: readonly ToolSpec[] = allTools) {
-    for (const tool of tools) {
+    for (const tool of tools.map(withListLimit)) {
       const path = tool.cliPath.join(" ");
       if (this.toolsByName.has(tool.name) || this.toolsByCliPath.has(path)) {
         throw new AiHubError("AI_HUB_TOOL_DUPLICATE", `Duplicate tool registration: ${tool.name}.`);
       }
+      assertListLimitSchema(tool);
       this.toolsByName.set(tool.name, tool);
       this.toolsByCliPath.set(path, tool);
     }
@@ -62,7 +73,10 @@ export class ToolRegistry {
     const tool = this.byName(name, options);
     if (tool.operation === "write") throw new AiHubError("AI_HUB_WRITE_CONFIRMATION_REQUIRED", `Tool "${name}" must be executed through confirmation.`);
     const validInput = tool.validate(input);
-    return tool.handler(validInput, context);
+    const response = await tool.handler(validInput, context);
+    return tool.unpagedListLimit
+      ? truncateUnpagedListResponse(response, tool.unpagedListLimit, validInput as Record<string, unknown>)
+      : response;
   }
 
   public async prepareWrite(name: string, input: unknown, context: ToolExecutionContext, confirmations: ConfirmationPreparer): Promise<PreparedAction> {
@@ -97,6 +111,6 @@ export class ToolRegistry {
   }
 }
 
-export function createToolRegistry(): ToolRegistry {
-  return new ToolRegistry();
+export function createToolRegistry(tools?: readonly ToolSpec[]): ToolRegistry {
+  return new ToolRegistry(tools);
 }
