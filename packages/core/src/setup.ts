@@ -6,7 +6,7 @@ import { validateProfileName } from "./config.js";
 import { DEFAULT_MCP_TOOLSET, parseMcpToolset, type McpToolset } from "./tools/mcp-toolset.js";
 import { DEFAULT_MCP_RESPONSE_MODE, parseMcpResponseMode, type McpResponseMode } from "./mcp-response-mode.js";
 
-export type McpClientId = "cursor" | "claude-desktop" | "claude-code" | "codex";
+export type McpClientId = "cursor" | "claude-desktop" | "claude-code" | "codex" | "openclaw";
 
 export interface McpSetupOptions {
   client: McpClientId;
@@ -28,7 +28,7 @@ export interface McpSetupRuntime {
   appData?: string;
   localAppData?: string;
   xdgConfigHome?: string;
-  executeClientCommand?: (command: "claude" | "codex", args: string[]) => void;
+  executeClientCommand?: (command: "claude" | "codex" | "openclaw", args: string[]) => void;
 }
 
 const MCP_BINARY = "ai-hub-trade-mcp";
@@ -37,7 +37,8 @@ export const MCP_CLIENT_NAMES: Record<McpClientId, string> = {
   cursor: "Cursor",
   "claude-desktop": "Claude Desktop",
   "claude-code": "Claude Code",
-  codex: "Codex"
+  codex: "Codex",
+  openclaw: "OpenClaw"
 };
 
 export const SUPPORTED_MCP_CLIENTS = Object.keys(MCP_CLIENT_NAMES) as McpClientId[];
@@ -89,18 +90,27 @@ function findMicrosoftStoreClaudePath(value: string | undefined, home: string): 
   }
 }
 
-/** Returns the config file managed by clients that use JSON MCP registration. */
-export function getMcpClientConfigPath(client: Exclude<McpClientId, "claude-code" | "codex">, value: McpSetupRuntime = runtime()): string {
-  if (client === "cursor") return path.join(value.home, ".cursor", "mcp.json");
+/** Returns every JSON configuration file that must receive one client registration. */
+function getMcpClientConfigPaths(client: Exclude<McpClientId, "claude-code" | "codex" | "openclaw">, value: McpSetupRuntime = runtime()): string[] {
+  if (client === "cursor") return [path.join(value.home, ".cursor", "mcp.json")];
 
   if (value.platform === "win32") {
-    return findMicrosoftStoreClaudePath(value.localAppData, value.home)
-      ?? path.join(windowsAppData(value.appData, value.home), "Claude", "claude_desktop_config.json");
+    return [findMicrosoftStoreClaudePath(value.localAppData, value.home)
+      ?? path.join(windowsAppData(value.appData, value.home), "Claude", "claude_desktop_config.json")];
   }
   if (value.platform === "darwin") {
-    return path.join(value.home, "Library", "Application Support", "Claude", "claude_desktop_config.json");
+    const legacyPath = path.join(value.home, "Library", "Application Support", "Claude", "claude_desktop_config.json");
+    const modernPath = path.join(value.home, "Library", "Application Support", "Claude-3p", "claude_desktop_config.json");
+    // Keep the documented legacy registration current. A running Claude-3p
+    // installation reads its own file, so update that existing registry too.
+    return fs.existsSync(modernPath) ? [legacyPath, modernPath] : [legacyPath];
   }
-  return path.join(value.xdgConfigHome ?? path.join(value.home, ".config"), "Claude", "claude_desktop_config.json");
+  return [path.join(value.xdgConfigHome ?? path.join(value.home, ".config"), "Claude", "claude_desktop_config.json")];
+}
+
+/** Returns the primary config file for callers that only need one display path. */
+export function getMcpClientConfigPath(client: Exclude<McpClientId, "claude-code" | "codex" | "openclaw">, value: McpSetupRuntime = runtime()): string {
+  return getMcpClientConfigPaths(client, value)[0]!;
 }
 
 function buildServerSpec(profile: string | undefined, toolset: McpToolset, responseMode: McpResponseMode, launch: McpServerLaunch): McpServerSpec {
@@ -158,7 +168,7 @@ function mergeJsonMcpConfig(configPath: string, server: McpServerSpec): void {
   fs.renameSync(temporaryPath, configPath);
 }
 
-function executeClientRegistration(command: "claude" | "codex", args: string[], value: McpSetupRuntime): void {
+function executeClientRegistration(command: "claude" | "codex" | "openclaw", args: string[], value: McpSetupRuntime): void {
   process.stdout.write(`Running: ${command} ${args.join(" ")}\n`);
   if (value.executeClientCommand) {
     value.executeClientCommand(command, args);
@@ -172,8 +182,9 @@ function jsonFileAdapter(id: "cursor" | "claude-desktop"): McpClientAdapter {
     id,
     name: MCP_CLIENT_NAMES[id],
     install(server, value): void {
-      mergeJsonMcpConfig(getMcpClientConfigPath(id, value), server);
-      process.stdout.write(`Configured ${this.name}: ${getMcpClientConfigPath(id, value)}\nRestart ${this.name} to apply changes.\n`);
+      const configPaths = getMcpClientConfigPaths(id, value);
+      for (const configPath of configPaths) mergeJsonMcpConfig(configPath, server);
+      process.stdout.write(`Configured ${this.name}: ${configPaths.join(", ")}\nRestart ${this.name} to apply changes.\n`);
     }
   };
 }
@@ -199,11 +210,39 @@ function cliAdapter(id: "claude-code" | "codex"): McpClientAdapter {
   };
 }
 
+/**
+ * OpenClaw owns its gateway configuration. Register through its CLI instead
+ * of writing an implementation-specific config file, so this remains stable
+ * across local and remote Gateway installations.
+ */
+function openClawAdapter(): McpClientAdapter {
+  return {
+    id: "openclaw",
+    name: MCP_CLIENT_NAMES.openclaw,
+    install(server, value): void {
+      const args = [
+        "mcp",
+        "add",
+        server.name,
+        "--command",
+        server.command,
+        ...server.args.flatMap((argument) => ["--arg", argument])
+      ];
+      executeClientRegistration("openclaw", args, value);
+      process.stdout.write(
+        `Configured ${this.name} with local stdio MCP server "${server.name}". ` +
+        `Run \`openclaw mcp doctor ${server.name} --probe\` to verify it.\n`
+      );
+    }
+  };
+}
+
 const MCP_CLIENT_ADAPTERS: Record<McpClientId, McpClientAdapter> = {
   cursor: jsonFileAdapter("cursor"),
   "claude-desktop": jsonFileAdapter("claude-desktop"),
   "claude-code": cliAdapter("claude-code"),
-  codex: cliAdapter("codex")
+  codex: cliAdapter("codex"),
+  openclaw: openClawAdapter()
 };
 
 /** Registers the local stdio MCP package with one supported AI client. */

@@ -15,11 +15,19 @@ ai-hub-trade-mcp setup --client cursor --profile default
 ai-hub-trade-mcp setup --client claude-desktop --profile default
 ai-hub-trade-mcp setup --client claude-code --profile default
 ai-hub-trade-mcp setup --client codex --profile default
+ai-hub-trade-mcp setup --client openclaw --profile default
 ai-hub-trade-mcp setup --client codex --profile default --toolset full
 ai-hub-trade-mcp setup --client codex --profile default --response-mode compat
 ```
 
-Setup registers the currently installed MCP binary through its absolute Node runtime and entrypoint path, so desktop clients do not depend on a global PATH or an unpublished `npx` package. Cursor and Claude Desktop configurations are merged with existing MCP servers through their JSON configurations. Claude Code and Codex are registered through their official CLIs; Claude Code uses user scope. Existing JSON configurations are validated, atomically updated, and backed up before their first modification. The setup command stores no API credentials; the MCP server continues to read its profile from `~/.ai-hub/config.toml`.
+Setup registers the currently installed MCP binary through its absolute Node runtime and entrypoint path, so desktop clients do not depend on a global PATH or an unpublished `npx` package. Cursor and Claude Desktop configurations are merged with existing MCP servers through their JSON configurations. Claude Code, Codex, and OpenClaw are registered through their official CLIs; Claude Code uses user scope. Existing JSON configurations are validated, atomically updated, and backed up before their first modification. The setup command stores no API credentials; the MCP server continues to read its profile from `~/.ai-hub/config.toml`.
+
+For OpenClaw, run setup on the machine that runs the OpenClaw Gateway and as the same operating-system user as that Gateway. The selected AI Hub profile must exist in that user's `~/.ai-hub/config.toml`. Verify the registration after setup:
+
+```bash
+openclaw mcp doctor ai-hub-trade-mcp-default --probe
+openclaw mcp reload
+```
 
 ## Spot market-order units
 

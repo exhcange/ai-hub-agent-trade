@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-account
-version: "0.1.12"
+version: "0.1.13"
 description: Use this Skill when a user asks for one configured AI Hub spot-asset balance. Use the local ai-hub CLI and require a configured credential profile.
 ---
 

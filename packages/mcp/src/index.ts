@@ -20,7 +20,7 @@ function printUsage(): void {
     "  ai-hub-trade-mcp [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>] [--read-only]\n" +
     "  ai-hub-trade-mcp setup --client <client> [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>]\n\n" +
     "The default command starts the local stdio MCP server.\n" +
-    "Use setup to register it with Cursor, Claude Desktop, Claude Code, or Codex.\n"
+    "Use setup to register it with Cursor, Claude Desktop, Claude Code, Codex, or OpenClaw.\n"
   );
 }
 
