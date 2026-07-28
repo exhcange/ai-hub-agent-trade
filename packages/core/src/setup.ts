@@ -226,7 +226,10 @@ function openClawAdapter(): McpClientAdapter {
         server.name,
         "--command",
         server.command,
-        ...server.args.flatMap((argument) => ["--arg", argument])
+        // OpenClaw's option parser treats a separate value beginning with
+        // "--" as one of its own flags. The equals form preserves the exact
+        // child-process argument, including MCP flags such as --profile.
+        ...server.args.flatMap((argument) => [`--arg=${argument}`])
       ];
       executeClientRegistration("openclaw", args, value);
       process.stdout.write(

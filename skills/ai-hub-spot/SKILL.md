@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot
-version: "0.1.13"
+version: "0.1.14"
 description: Use this Skill for supported AI Hub spot-market, account, order, wallet, or sub-account requests. Route the request to the focused AI Hub Skill, use the local ai-hub CLI, and enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for unsupported products or capabilities.
 ---
 

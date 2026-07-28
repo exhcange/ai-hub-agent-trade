@@ -164,7 +164,7 @@ test("uses the official client CLIs for Claude Code, Codex, and OpenClaw", async
     },
     {
       command: "openclaw",
-      args: ["mcp", "add", "ai-hub-trade-mcp-default", "--command", "/usr/local/bin/node", "--arg", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--arg", "--profile", "--arg", "default", "--arg", "--toolset", "--arg", "default", "--arg", "--response-mode", "--arg", "compact"]
+      args: ["mcp", "add", "ai-hub-trade-mcp-default", "--command", "/usr/local/bin/node", "--arg=/opt/ai-hub/agent-trade-mcp/dist/index.js", "--arg=--profile", "--arg=default", "--arg=--toolset", "--arg=default", "--arg=--response-mode", "--arg=compact"]
     }
   ]);
 });
