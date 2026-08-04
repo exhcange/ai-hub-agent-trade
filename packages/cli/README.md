@@ -28,13 +28,22 @@ ai-hub spot order sell-available --symbol ETHUSDT
 
 # Buy exactly 1 ETH at a limit price of 1800 USDT.
 ai-hub spot order limit --symbol ETHUSDT --side BUY --base-quantity 1 --price 1800
+
+# Directly select one supported limit-style OpenAPI type.
+ai-hub spot order limit --symbol ETHUSDT --side BUY --type POST_ONLY --base-quantity 1 --price 1800
+
+# Conditional orders require an explicit trigger price.
+ai-hub spot order stop-limit --symbol ETHUSDT --side SELL --base-quantity 1 --trigger-price 1700 --price 1690
+ai-hub spot order stop-market-buy --symbol ETHUSDT --quote-amount 100 --trigger-price 2000
 ```
 
 Market BUY cannot guarantee an exact base-asset quantity. If the desired quantity is "1 ETH", use a limit order or first choose an explicit USDT amount to spend.
 
-Use `ai-hub account asset-balance --asset ETH` when one asset is needed instead of the full account response. Use `ai-hub spot order sell-available --symbol ETHUSDT` when the user explicitly wants the maximum executable ETH balance sold: its preview floors only to the configured quantity precision and displays both the remainder and the amount that would be sold.
+Use `ai-hub account asset-balance --asset ETH` for one asset. Use `ai-hub account balances` when the user requests account balances without naming an asset; it returns only compact balance rows and defaults to non-zero assets. Use `ai-hub spot order sell-available --symbol ETHUSDT` when the user explicitly wants the maximum executable ETH balance sold: its preview floors only to the configured quantity precision and displays both the remainder and the amount that would be sold.
 
-The same unit rules apply to margin orders: use `margin order market-buy --quote-amount`, `margin order market-sell --base-quantity`, or `margin order limit --base-quantity --price`.
+The same unit rules apply to margin orders: use `margin order market-buy --quote-amount`, `margin order market-sell --base-quantity`, `margin order limit --type IOC|FOK|POST_ONLY --base-quantity --price`, or the matching `margin order stop-limit|stop-market-buy|stop-market-sell` command.
+
+For this OpenAPI, `LIMIT`, `IOC`, `FOK`, and `POST_ONLY` are direct `type` values. Do not supply `--time-in-force`: it is not a server parameter and is rejected by the CLI.
 
 The CLI does not provide `spot order place --volume`. It deliberately exposes `market-buy`, `market-sell`, and `limit` as separate commands so the asset unit cannot be ambiguous. Batch placement accepts a JSON array with the same semantic fields: `quoteAmount` for a market BUY and `baseQuantity` for a market SELL or limit order.
 
@@ -53,4 +62,4 @@ Before an order preview is created, the CLI lazily loads `/sapi/v2/symbols` once
 
 ## Bounded market analysis
 
-For a generic trading-pair list, use `ai-hub market symbols-overview`; it returns only counts and a small sample. Use `symbols-list --quote-asset USDT --offset 0 --limit 20` for paged browsing, `symbols-search --query BTC` for a keyword search, and `symbol-info --symbol BTCUSDT` only when precision or minimum order rules are needed. These commands return Agent-friendly bounded results instead of complete market payloads. Raw trades are capped at 100 rows; raw klines support up to 300 rows. Kline intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month` (`60min`, not `1h`).
+For a generic trading-pair list, use `ai-hub market symbols-overview`; it returns only counts and a small sample. Use `symbols-list --quote-asset USDT --offset 0 --limit 20` for paged browsing, `symbols-search --query BTC` for a keyword search, and `symbol-info --symbol BTCUSDT` only when precision or minimum order rules are needed. These commands return Agent-friendly bounded results instead of complete market payloads. Raw trades and raw klines are capped at 50 rows. Kline intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month` (`60min`, not `1h`).

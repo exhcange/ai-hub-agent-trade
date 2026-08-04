@@ -122,7 +122,16 @@ function buildServerSpec(profile: string | undefined, toolset: McpToolset, respo
 }
 
 function serverName(profile?: string): string {
-  return profile ? `${MCP_BINARY}-${profile}` : MCP_BINARY;
+  return profile && profile !== "default" ? `aihub-${profile}` : "aihub";
+}
+
+function legacyServerNames(profile?: string): string[] {
+  return [...new Set([MCP_BINARY, profile ? `${MCP_BINARY}-${profile}` : undefined].filter((name): name is string => Boolean(name)))];
+}
+
+function profileFromServerArgs(args: readonly string[]): string | undefined {
+  const index = args.indexOf("--profile");
+  return index < 0 ? undefined : args[index + 1];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -152,6 +161,7 @@ function mergeJsonMcpConfig(configPath: string, server: McpServerSpec): void {
   if (!isRecord(config.mcpServers)) {
     throw new Error(`Existing MCP configuration at ${configPath} has an invalid mcpServers object. No changes were made.`);
   }
+  const mcpServers = config.mcpServers;
   if (configExists) {
     const backupPath = `${configPath}.bak`;
     if (!fs.existsSync(backupPath)) {
@@ -159,7 +169,12 @@ function mergeJsonMcpConfig(configPath: string, server: McpServerSpec): void {
       process.stdout.write(`Backup created: ${backupPath}\n`);
     }
   }
-  config.mcpServers[server.name] = { command: server.command, args: server.args };
+  const legacyNames = legacyServerNames(profileFromServerArgs(server.args));
+  const existingLegacyNames = legacyNames.filter((name) => name !== server.name && Object.hasOwn(mcpServers, name));
+  if (existingLegacyNames.length) {
+    process.stdout.write(`Migration note: existing MCP server ${existingLegacyNames.map((name) => `"${name}"`).join(", ")} was kept. Remove it manually after verifying "${server.name}".\n`);
+  }
+  mcpServers[server.name] = { command: server.command, args: server.args };
 
   const mode = configExists ? fs.statSync(configPath).mode & 0o777 : 0o600;
   const temporaryPath = `${configPath}.${process.pid}.tmp`;
@@ -257,6 +272,9 @@ export function runMcpSetup(options: McpSetupOptions, value: McpSetupRuntime = r
   const profile = options.profile ? validateProfileName(options.profile) : undefined;
   const toolset = parseMcpToolset(options.toolset ?? DEFAULT_MCP_TOOLSET);
   const responseMode = parseMcpResponseMode(options.responseMode ?? DEFAULT_MCP_RESPONSE_MODE);
+  if (options.client === "claude-code" || options.client === "codex" || options.client === "openclaw") {
+    process.stdout.write(`Migration note: older "${MCP_BINARY}" registrations are not removed automatically; remove them manually after verifying "${serverName(profile)}".\n`);
+  }
   adapter.install(buildServerSpec(profile, toolset, responseMode, options.launch), value);
 }
 

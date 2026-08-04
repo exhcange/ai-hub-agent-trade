@@ -2,7 +2,7 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { AiHubError, parseMcpResponseMode, parseMcpToolset, printMcpSetupUsage, runMcpSetup, SUPPORTED_MCP_CLIENTS, type McpClientId } from "@ai-hub/agent-trade-core";
+import { AI_HUB_RELEASE_VERSION, AiHubError, parseMcpResponseMode, parseMcpToolset, printMcpSetupUsage, runMcpSetup, SUPPORTED_MCP_CLIENTS, type McpClientId } from "@ai-hub/agent-trade-core";
 import { createServer } from "./server.js";
 
 function readOption(args: string[], option: string): string | undefined {
@@ -25,6 +25,10 @@ function printUsage(): void {
 }
 
 export async function main(argv: string[]): Promise<void> {
+  if (argv.includes("--version") || argv.includes("-V")) {
+    process.stdout.write(`${AI_HUB_RELEASE_VERSION}\n`);
+    return;
+  }
   if (argv.includes("--help") || argv.includes("-h")) {
     printUsage();
     return;

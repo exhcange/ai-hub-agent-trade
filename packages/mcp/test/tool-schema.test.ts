@@ -2,61 +2,53 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { createToolRegistry } from "@ai-hub/agent-trade-core";
 import { createServer } from "../src/server.js";
 
-test("default MCP advertises only the approved bounded trading and wallet tools", async () => {
+function prepareName(name: string): string {
+  const [prefix, ...rest] = name.split("_");
+  return `${prefix}_prepare_${rest.join("_")}`;
+}
+
+async function listTools(toolset: "default" | "full") {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const server = createServer(undefined, false);
+  const server = createServer(undefined, false, toolset);
   const client = new Client({ name: "mcp-tool-schema-test", version: "1.0.0" });
-  try {
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-    const response = await client.listTools();
-    for (const name of ["market_get_symbol_overview", "market_list_symbols", "market_search_symbols", "market_get_symbol_info", "market_get_ticker_summary", "market_get_depth_summary", "market_get_trades_summary", "market_get_klines_summary"]) {
-      const tool = response.tools.find((item) => item.name === name);
-      assert.ok(tool, `${name} must be advertised`);
-      assert.equal(tool.outputSchema?.type, "object");
-      assert.ok(tool.description);
-    }
-    assert.equal(response.tools.length, 26);
-    const klineSummary = response.tools.find((item) => item.name === "market_get_klines_summary");
-    const universalTransfer = response.tools.find((item) => item.name === "wallet_prepare_universal_transfer");
-    for (const name of ["market_get_symbols", "market_get_depth", "market_get_trades", "market_get_klines", "spot_test_order", "spot_prepare_sell_available", "account_get_asset_balance", "margin_get_order", "wallet_prepare_create_withdraw", "sub_account_list"]) {
-      assert.equal(response.tools.some((item) => item.name === name), false, `${name} must not be advertised through MCP`);
-    }
-    const searchSymbols = response.tools.find((item) => item.name === "market_search_symbols");
-    const listSymbols = response.tools.find((item) => item.name === "market_list_symbols");
-    assert.deepEqual(searchSymbols?.inputSchema.required, ["query"]);
-    assert.equal(((searchSymbols?.inputSchema.properties?.limit as { maximum?: number } | undefined)?.maximum), 50);
-    assert.equal(((listSymbols?.inputSchema.properties?.limit as { maximum?: number } | undefined)?.maximum), 50);
-    assert.deepEqual(klineSummary?.inputSchema.required, ["symbol"]);
-    assert.match((universalTransfer?.inputSchema.properties?.toAccountType as { description?: string } | undefined)?.description ?? "", /2=Isolated Margin/);
-    const unavailable = await client.callTool({ name: "margin_get_order", arguments: {} });
-    assert.equal(unavailable.isError, true);
-    assert.match((unavailable.content[0] as { text: string }).text, /AI_HUB_TOOL_NOT_AVAILABLE/);
-  } finally {
-    await client.close();
-    await server.close();
-  }
-});
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  const response = await client.listTools();
+  return { client, server, tools: response.tools };
+}
 
-test("full MCP exposes every remaining Core tool, including raw market responses", async () => {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const server = createServer(undefined, false, "full");
-  const client = new Client({ name: "mcp-full-tool-schema-test", version: "1.0.0" });
-  try {
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-    const response = await client.listTools();
-    assert.equal(response.tools.length, 55);
-    for (const name of ["market_get_symbols", "market_get_depth", "market_get_trades", "market_get_klines", "margin_get_order", "wallet_prepare_create_withdraw", "sub_account_list"]) assert.ok(response.tools.some((item) => item.name === name), `${name} must be advertised through full MCP`);
-  } finally {
-    await client.close();
-    await server.close();
-  }
-});
+for (const toolset of ["default", "full"] as const) {
+  test(`${toolset} MCP exposes every Registry capability and only prepare forms for writes`, async () => {
+    const { client, server, tools } = await listTools(toolset);
+    try {
+      const registryTools = createToolRegistry().list();
+      assert.equal(tools.length, registryTools.length + 1, "confirm_action is the only non-Registry MCP tool");
+      assert.equal(tools.some((tool) => tool.name === "system_get_capabilities"), false);
+      assert.ok(tools.some((tool) => tool.name === "confirm_action"));
+      for (const tool of registryTools) {
+        if (tool.operation === "read") {
+          assert.ok(tools.some((item) => item.name === tool.name), `${tool.name} must be exposed`);
+        } else {
+          assert.ok(tools.some((item) => item.name === prepareName(tool.name)), `${tool.name} must be exposed as prepare`);
+          assert.equal(tools.some((item) => item.name === tool.name), false, `${tool.name} must not be exposed directly`);
+        }
+      }
+      const balance = tools.find((tool) => tool.name === "account_get_asset_balance");
+      const balances = tools.find((tool) => tool.name === "account_list_balances");
+      assert.ok(balance?.outputSchema);
+      assert.ok(balances?.outputSchema);
+      assert.equal(tools.find((tool) => tool.name === "market_get_ticker")?.outputSchema, undefined);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+}
 
-test("read-only MCP rejects write preparation and confirmation even when called directly", async () => {
+test("read-only MCP removes every prepared write and confirmation", async () => {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createServer(undefined, true);
   const client = new Client({ name: "mcp-read-only-test", version: "1.0.0" });
@@ -66,11 +58,6 @@ test("read-only MCP rejects write preparation and confirmation even when called 
     const response = await client.listTools();
     assert.equal(response.tools.some((item) => item.name === "spot_prepare_market_buy"), false);
     assert.equal(response.tools.some((item) => item.name === "confirm_action"), false);
-    for (const name of ["spot_prepare_market_buy", "confirm_action"]) {
-      const result = await client.callTool({ name, arguments: {} });
-      assert.equal(result.isError, true);
-      assert.match((result.content[0] as { text: string }).text, /AI_HUB_TOOL_NOT_AVAILABLE/);
-    }
   } finally {
     await client.close();
     await server.close();

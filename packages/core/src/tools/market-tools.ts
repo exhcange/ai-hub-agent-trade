@@ -64,6 +64,35 @@ function validateKlineInput(input: unknown, options: { summary: boolean }): {
   };
 }
 
+function validateHistoricalMinuteKlines(input: unknown): {
+  symbol: string;
+  startTime?: number;
+  endTime?: number;
+  limit: number;
+} {
+  const value = strictObject(input, ["symbol", "startTime", "endTime", "limit"]);
+  const startTime = value.startTime === undefined ? undefined : optionalInteger(value, "startTime", 0, 0, Number.MAX_SAFE_INTEGER);
+  const endTime = value.endTime === undefined ? undefined : optionalInteger(value, "endTime", 0, 0, Number.MAX_SAFE_INTEGER);
+  if (startTime !== undefined && endTime !== undefined && startTime > endTime) {
+    throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "startTime cannot be after endTime.");
+  }
+  return { symbol: requiredString(value, "symbol"), startTime, endTime, limit: normalizedListLimit(value, STANDARD_LIST_LIMIT) };
+}
+
+function boundHistoricalMinuteKlines(response: unknown, limit: number): Record<string, unknown> {
+  if (!Array.isArray(response)) throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "Historical minute Klines response must be an array.");
+  const items = response.slice(0, limit);
+  return {
+    totalCandles: response.length,
+    returnedCount: items.length,
+    truncated: response.length > items.length,
+    continuation: response.length > items.length
+      ? { available: false, reason: "The upstream historical-minute endpoint does not expose a page cursor." }
+      : null,
+    items
+  };
+}
+
 export const marketTools: ToolSpec[] = [
   {
     name: "market_ping", title: "Test OpenAPI Connection", description: "Test the configured tenant OpenAPI connection.", cliPath: ["market", "ping"],
@@ -304,6 +333,22 @@ export const marketTools: ToolSpec[] = [
     handler: async (input, context) => {
       const value = input as { symbol: string; interval: string; startTime?: number; endTime?: number; timezone?: string; limit: number };
       return summarizeKlines(await context.api.klines(value), value.symbol, value.interval);
+    }
+  },
+  {
+    name: "market_get_historical_minute_klines",
+    title: "Get Historical Minute Klines",
+    description: "Get bounded historical one-minute candles from the dedicated v2 historical-minute endpoint. Use this when a requested 1-minute time range needs historical storage rather than the standard Kline cache.",
+    cliPath: ["market", "klines-1min-history"],
+    module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    inputSchema: { type: "object", properties: { symbol: { type: "string", minLength: 1 }, startTime: { type: "integer", minimum: 0, description: "Optional inclusive Unix timestamp in milliseconds." }, endTime: { type: "integer", minimum: 0, description: "Optional inclusive Unix timestamp in milliseconds." }, limit: listLimitSchema(STANDARD_LIST_LIMIT) }, required: ["symbol"], additionalProperties: false },
+    errorCodes: readErrors,
+    listLimit: STANDARD_LIST_LIMIT,
+    validate: validateHistoricalMinuteKlines,
+    handler: async (input, context) => {
+      const value = input as { symbol: string; startTime?: number; endTime?: number; limit: number };
+      const { symbol, startTime, endTime, limit } = value;
+      return boundHistoricalMinuteKlines(await context.api.historicalMinuteKlines({ symbol, startTime, endTime }), limit);
     }
   }
 ];

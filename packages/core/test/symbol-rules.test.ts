@@ -35,6 +35,10 @@ test("lazily loads one profile's symbol rules once and validates BTCUSDT precisi
     preflightSymbolOrder(context, { symbol: "BTCUSDT", side: "BUY", type: "LIMIT", baseQuantity: "0.00001", price: "0.01" }),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_SYMBOL_MINIMUM_NOT_MET"
   );
+  await assert.rejects(
+    preflightSymbolOrder(context, { symbol: "BTCUSDT", side: "SELL", type: "STOP", baseQuantity: "0.00002", price: "65000.12", triggerPrice: "65000.123" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_SYMBOL_PRECISION_INVALID" && error.message.includes("triggerPrice")
+  );
 });
 
 test("persists an isolated public symbol snapshot without retaining credentials", async () => {

@@ -8,6 +8,8 @@ test("registry is the unique source for CLI paths and read-only visibility", () 
   assert.ok(tools.length >= 29);
   assert.equal(registry.byCliPath(["market", "depth"]).name, "market_get_depth");
   assert.equal(registry.byCliPath(["account", "asset-balance"]).name, "account_get_asset_balance");
+  assert.equal(registry.byCliPath(["spot", "order", "history"]).name, "spot_get_history_orders");
+  assert.equal(registry.byCliPath(["market", "klines-1min-history"]).name, "market_get_historical_minute_klines");
   assert.equal(registry.byCliPath(["margin", "order", "get"]).name, "margin_get_order");
   assert.equal(registry.byCliPath(["wallet", "deposit-history"]).name, "wallet_get_deposit_history");
   assert.equal(registry.byCliPath(["sub-account", "list"]).name, "sub_account_list");
@@ -36,17 +38,53 @@ test("list tools share a default of 20 and reject values above 50", () => {
   assert.deepEqual(registry.byName("market_get_depth").validate({ symbol: "BTCUSDT" }), { symbol: "BTCUSDT", limit: 20 });
   assert.deepEqual(registry.byName("spot_get_open_orders").validate({}), { symbol: undefined, limit: 20 });
   assert.deepEqual(registry.byName("margin_get_fills").validate({ symbol: "BTCUSDT" }), { symbol: "BTCUSDT", limit: 20 });
+  assert.deepEqual(registry.byName("spot_get_history_orders").validate({ symbol: "BTCUSDT" }), { symbol: "BTCUSDT", page: 1, limit: 20, startTime: undefined, endTime: undefined });
   assert.deepEqual(registry.byName("wallet_get_deposit_history").validate({}), { page: 1, pageSize: 20 });
   assert.deepEqual(registry.byName("sub_account_get_root_transfer_history").validate({ subUid: "1", coinSymbol: "USDT" }), { subUid: "1", coinSymbol: "USDT", page: 1, pageSize: 20 });
   for (const [name, input] of [
     ["market_get_depth", { symbol: "BTCUSDT", limit: 51 }],
     ["spot_get_open_orders", { limit: 51 }],
     ["margin_get_fills", { symbol: "BTCUSDT", limit: 51 }],
+    ["spot_get_history_orders", { limit: 51 }],
     ["wallet_get_deposit_history", { pageSize: 51 }],
     ["sub_account_get_root_transfer_history", { subUid: "1", coinSymbol: "USDT", pageSize: 51 }]
   ] as const) {
     assert.throws(() => registry.byName(name).validate(input), (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT");
   }
+  assert.throws(
+    () => registry.byName("spot_get_history_orders").validate({}),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
+});
+
+test("spot and margin orders use the service's direct advanced type and conditional-order fields", () => {
+  const registry = createToolRegistry();
+
+  const postOnly = registry.byName("spot_limit_order").validate({ symbol: "BTCUSDT", side: "BUY", type: "POST_ONLY", baseQuantity: "0.001", price: "60000" }) as Record<string, unknown>;
+  assert.equal(postOnly.type, "POST_ONLY");
+  assert.equal(postOnly.price, "60000");
+
+  const stopLimit = registry.byName("spot_stop_limit_order").validate({ symbol: "BTCUSDT", side: "SELL", baseQuantity: "0.001", price: "59000", triggerPrice: "59500" }) as Record<string, unknown>;
+  assert.deepEqual({ type: stopLimit.type, volume: stopLimit.volume, price: stopLimit.price, triggerPrice: stopLimit.triggerPrice }, { type: "STOP", volume: "0.001", price: "59000", triggerPrice: "59500" });
+
+  const stopMarketBuy = registry.byName("spot_stop_market_buy").validate({ symbol: "ETHUSDT", quoteAmount: "100", triggerPrice: "2000" }) as Record<string, unknown>;
+  assert.deepEqual({ type: stopMarketBuy.type, volume: stopMarketBuy.volume, triggerPrice: stopMarketBuy.triggerPrice }, { type: "STOP_MARKET", volume: "100", triggerPrice: "2000" });
+
+  const marginFok = registry.byName("margin_limit_order").validate({ symbol: "BTCUSDT", side: "BUY", type: "FOK", baseQuantity: "0.001", price: "60000" }) as Record<string, unknown>;
+  assert.equal(marginFok.type, "FOK");
+
+  assert.throws(
+    () => registry.byName("spot_limit_order").validate({ symbol: "BTCUSDT", side: "BUY", type: "STOP", baseQuantity: "0.001", price: "60000" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
+  assert.throws(
+    () => registry.byName("spot_stop_market_buy").validate({ symbol: "ETHUSDT", quoteAmount: "100", triggerPrice: "2000", price: "2001" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
+  assert.throws(
+    () => registry.byName("spot_batch_place_orders").validate({ symbol: "BTCUSDT", orders: [{ side: "SELL", type: "STOP", baseQuantity: "0.001", price: "59000", triggerPrice: "59500" }] }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
 });
 
 test("ticker summary uses one total response budget and a short shared source cache", async () => {
@@ -157,13 +195,24 @@ test("kline tools expose OpenAPI intervals and normalize safe chart aliases", as
     registry.execute("market_get_klines", { symbol: "ETHUSDT", interval: "60min", limit: 51 }, context),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT" && error.message.includes("50")
   );
+
+  let historicalReceived: unknown;
+  const historicalContext = {
+    profile: { name: "tenant-a", openApiBaseUrl: "https://api.example.com", configVersion: "v1" },
+    api: { historicalMinuteKlines: async (input: unknown) => { historicalReceived = input; return Array.from({ length: 25 }, (_item, index) => ({ idx: index })); } }
+  } as never;
+  const historical = await registry.execute("market_get_historical_minute_klines", { symbol: "ETHUSDT" }, historicalContext) as Record<string, unknown>;
+  assert.deepEqual(historicalReceived, { symbol: "ETHUSDT", startTime: undefined, endTime: undefined });
+  assert.equal(historical.returnedCount, 20);
+  assert.equal(historical.totalCandles, 25);
+  assert.equal(historical.truncated, true);
 });
 
 test("registry contains every migrated non-derivatives API capability", () => {
   const registry = createToolRegistry();
   const expected = [
-    "market_ping", "spot_test_order", "spot_market_buy", "spot_market_sell", "spot_limit_order", "spot_batch_place_orders", "spot_batch_cancel_orders",
-    "margin_get_order", "margin_get_open_orders", "margin_get_fills", "margin_market_buy", "margin_market_sell", "margin_limit_order", "margin_cancel_order",
+    "market_ping", "market_get_historical_minute_klines", "account_get_asset_balance", "spot_test_order", "spot_get_history_orders", "spot_market_buy", "spot_market_sell", "spot_limit_order", "spot_stop_limit_order", "spot_stop_market_buy", "spot_stop_market_sell", "spot_batch_place_orders", "spot_batch_cancel_orders",
+    "margin_get_order", "margin_get_open_orders", "margin_get_fills", "margin_market_buy", "margin_market_sell", "margin_limit_order", "margin_stop_limit_order", "margin_stop_market_buy", "margin_stop_market_sell", "margin_cancel_order",
     "wallet_universal_transfer", "wallet_get_universal_transfer_history", "wallet_get_deposit_history", "wallet_get_deposit_address", "wallet_get_withdraw_address", "wallet_get_transferable_assets", "wallet_create_withdraw", "wallet_get_withdraw_history",
     "sub_account_list", "sub_account_create", "sub_account_update_trading_status", "sub_account_get_api_key_ips", "sub_account_update_api_key_ips", "sub_account_delete_api_key", "sub_account_get_assets", "sub_account_root_transfer", "sub_account_get_root_transfer_history", "sub_account_internal_transfer", "sub_account_get_internal_transfer_history"
   ];
@@ -172,7 +221,7 @@ test("registry contains every migrated non-derivatives API capability", () => {
   for (const name of ["spot_get_account", "account_transfer", "account_get_transfer_history", "wallet_get_exchange_account", "sub_account_transfer_to_parent", "sub_account_get_parent_transfer_history"]) {
     assert.throws(() => registry.byName(name), (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_TOOL_NOT_AVAILABLE");
   }
-  const writes = ["spot_market_buy", "spot_market_sell", "spot_limit_order", "spot_batch_place_orders", "spot_batch_cancel_orders", "margin_market_buy", "margin_market_sell", "margin_limit_order", "margin_cancel_order", "wallet_universal_transfer", "wallet_create_withdraw", "sub_account_create", "sub_account_update_trading_status", "sub_account_update_api_key_ips", "sub_account_delete_api_key", "sub_account_root_transfer", "sub_account_internal_transfer"];
+  const writes = ["spot_market_buy", "spot_market_sell", "spot_limit_order", "spot_stop_limit_order", "spot_stop_market_buy", "spot_stop_market_sell", "spot_batch_place_orders", "spot_batch_cancel_orders", "margin_market_buy", "margin_market_sell", "margin_limit_order", "margin_stop_limit_order", "margin_stop_market_buy", "margin_stop_market_sell", "margin_cancel_order", "wallet_universal_transfer", "wallet_create_withdraw", "sub_account_create", "sub_account_update_trading_status", "sub_account_update_api_key_ips", "sub_account_delete_api_key", "sub_account_root_transfer", "sub_account_internal_transfer"];
   for (const name of writes) {
     assert.equal(registry.byName(name).operation, "write", `${name} must require confirmation`);
   }

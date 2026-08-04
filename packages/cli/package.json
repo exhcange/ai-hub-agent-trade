@@ -1,6 +1,6 @@
 {
   "name": "@aihubspot/agent-trade-cli",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Local spot trading command-line tools for AI Hub",
   "license": "UNLICENSED",
   "repository": {
@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts",
+    "test": "TSX_TSCONFIG_PATH=./test/tsconfig.json tsx --test test/*.test.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

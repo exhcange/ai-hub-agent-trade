@@ -3,6 +3,7 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { AiHubError } from "../errors.js";
+import type { SpotOrderType } from "../openapi.js";
 import type { ToolExecutionContext } from "./tool-spec.js";
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -234,22 +235,24 @@ function assertAtLeast(name: string, value: string, minimum: string | undefined,
 export interface SymbolOrderCheck {
   symbol: string;
   side: "BUY" | "SELL";
-  type: "LIMIT" | "MARKET";
+  type: SpotOrderType;
   quoteAmount?: string;
   baseQuantity?: string;
   price?: string;
+  triggerPrice?: string;
 }
 
 /** Applies only documented symbol constraints before an order is displayed for confirmation. */
 export async function preflightSymbolOrder(context: ToolExecutionContext, order: SymbolOrderCheck): Promise<SymbolRule> {
   const rule = await getSymbolRule(context, order.symbol);
-  if (order.type === "MARKET" && order.side === "BUY" && order.quoteAmount) {
+  if ((order.type === "MARKET" || order.type === "STOP_MARKET") && order.side === "BUY" && order.quoteAmount) {
     // The symbols response has no quote-amount precision field; price precision is the available quote-asset precision.
     assertPrecision("quoteAmount", order.quoteAmount, rule.pricePrecision, rule.symbol);
   }
   if (order.baseQuantity) assertPrecision("baseQuantity", order.baseQuantity, rule.quantityPrecision, rule.symbol);
   if (order.price) assertPrecision("price", order.price, rule.pricePrecision, rule.symbol);
-  if (order.type === "LIMIT" && order.baseQuantity && order.price) {
+  if (order.triggerPrice) assertPrecision("triggerPrice", order.triggerPrice, rule.pricePrecision, rule.symbol);
+  if (["LIMIT", "IOC", "FOK", "POST_ONLY", "STOP"].includes(order.type) && order.baseQuantity && order.price) {
     assertAtLeast("baseQuantity", order.baseQuantity, rule.limitVolumeMin, rule.symbol);
     assertAtLeast("price", order.price, rule.limitPriceMin, rule.symbol);
     if (rule.limitAmountMin && compareDecimal(rule.limitAmountMin, "0") > 0) {

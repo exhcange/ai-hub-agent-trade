@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AiHubError, createToolRegistry, findAssetBalance } from "../src/index.js";
+import { AiHubError, createToolRegistry, findAssetBalance, listAssetBalances, listNonZeroAssetBalances } from "../src/index.js";
 
 test("asset-balance extracts one compact balance from the signed account response", async () => {
   const registry = createToolRegistry();
@@ -13,6 +13,45 @@ test("asset-balance extracts one compact balance from the signed account respons
     asset: "ETH", available: "0.00054012", frozen: "0.1", total: "0.10054012", found: true
   });
   assert.deepEqual(findAssetBalance({ balances: [] }, "USDT"), { asset: "USDT", available: "0", frozen: "0", total: "0", found: false });
+});
+
+test("account_list_balances uses the v1 overview and returns only compact requested balances", async () => {
+  const registry = createToolRegistry();
+  const context = {
+    profile: { name: "tenant-a", openApiBaseUrl: "https://api.example.com", configVersion: "v1" },
+    credentials: { apiKey: "test-key", secretKey: "test-secret", credentialVersion: "credential-v1" },
+    api: {
+      accountOverview: async () => ({ balances: [
+        { asset: "USDT", free: "10.5", locked: "0" },
+        { asset: "BTC", free: "0", locked: "0.01" },
+        { asset: "ETH", free: "0.000", locked: "0" }
+      ] })
+    }
+  } as never;
+  assert.deepEqual(await registry.execute("account_list_balances", {}, context), {
+    balances: [
+      { asset: "USDT", available: "10.5", frozen: "0", total: "10.5" },
+      { asset: "BTC", available: "0", frozen: "0.01", total: "0.01" }
+    ],
+    count: 2,
+    truncated: false
+  });
+  assert.deepEqual(await registry.execute("account_list_balances", { assets: ["eth", "usdt"], nonZeroOnly: false }, context), {
+    balances: [
+      { asset: "USDT", available: "10.5", frozen: "0", total: "10.5" },
+      { asset: "ETH", available: "0.000", frozen: "0", total: "0" }
+    ],
+    count: 2,
+    truncated: false
+  });
+  assert.throws(
+    () => registry.byName("account_get_asset_balance").validate({}),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
+  assert.deepEqual(listNonZeroAssetBalances({ balances: [{ asset: "ETH", free: "0", locked: "0" }] }, 0, 20).items, []);
+  assert.deepEqual(listAssetBalances({ balances: [{ asset: "USDT", free: "1", locked: "0" }, { asset: "BTC", free: "0", locked: "0" }] }, { nonZeroOnly: true, limit: 1 }), {
+    balances: [{ asset: "USDT", available: "1", frozen: "0", total: "1" }], count: 1, truncated: false
+  });
 });
 
 test("sell-available prepares a precision-safe market sell preview", async () => {

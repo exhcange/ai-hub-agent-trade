@@ -1,7 +1,7 @@
 {
   "name": "ai-hub-agent-trade",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.15",
   "type": "module",
   "packageManager": "pnpm@9.1.2",
   "engines": {
@@ -13,7 +13,7 @@
     "typecheck": "pnpm --filter @ai-hub/agent-trade-core build && pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "clean": "pnpm -r --if-present clean",
-    "release-check": "pnpm typecheck && pnpm test && node scripts/check-denylist.mjs"
+    "release-check": "pnpm typecheck && pnpm test && node scripts/check-denylist.mjs && node scripts/check-release-version.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

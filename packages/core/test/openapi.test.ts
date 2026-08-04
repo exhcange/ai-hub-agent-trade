@@ -19,6 +19,27 @@ test("includes the encoded query string in a signed read request", () => {
   assert.equal(signature, "df7cad7455409bccae87d99ee7667c140fc143a783bb1780e974dfb134c97d3a");
 });
 
+test("sends direct OpenAPI order types and triggerPrice without an unsupported timeInForce field", async () => {
+  const originalFetch = globalThis.fetch;
+  let body: Record<string, unknown> | undefined;
+  globalThis.fetch = async (input, init) => {
+    assert.match(String(input), /\/sapi\/v2\/order$/);
+    body = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ code: "0", data: { orderId: "1" } }), { status: 200 });
+  };
+  try {
+    const api = new AiHubSpotApi("https://api.example.com");
+    await api.placeOrder(
+      { symbol: "BTCUSDT", volume: "0.001", side: "SELL", type: "STOP", price: "59000", triggerPrice: "59500", newClientOrderId: "agent_test" },
+      { apiKey: "test-key", secretKey: "test-secret", credentialVersion: "v1" }
+    );
+    assert.deepEqual(body, { symbol: "BTCUSDT", volume: "0.001", side: "SELL", type: "STOP", newClientOrderId: "agent_test", price: "59000", triggerPrice: "59500" });
+    assert.equal("timeInForce" in (body ?? {}), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("maps a non-zero OpenAPI business code to a structured diagnosis", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ code: "-2013", msg: "Order does not exist" }), { status: 200 });
@@ -53,4 +74,18 @@ test("preserves unmapped upstream business codes", () => {
     retryable: false,
     writeOutcomeUnknown: false
   });
+});
+
+test("OpenAPI timing observer receives only elapsed milliseconds", async () => {
+  const originalFetch = globalThis.fetch;
+  const timings: number[] = [];
+  globalThis.fetch = async () => new Response(JSON.stringify({ code: "0", data: {} }), { status: 200 });
+  try {
+    await new AiHubSpotApi("https://api.example.com", { onRequestTiming: (elapsed) => timings.push(elapsed) }).ping();
+    assert.equal(timings.length, 1);
+    assert.equal(typeof timings[0], "number");
+    assert.ok((timings[0] ?? -1) >= 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

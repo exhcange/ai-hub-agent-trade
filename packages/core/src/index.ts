@@ -1,7 +1,8 @@
 export { AiHubError, OpenApiBusinessError, toAiHubErrorPayload, type OpenApiBusinessDiagnosis } from "./errors.js";
+export { AI_HUB_RELEASE_VERSION, AI_HUB_USER_AGENT } from "./release.js";
 export { loadStoredCredentials, validateApiCredentials, type ApiCredentials, type LoadedCredentials } from "./credential.js";
 export { ConfirmationService, FileConfirmationStore, type ConfirmationPreparer, type ExecutionContext, type PrepareActionInput, type PreparedAction } from "./confirmation.js";
-export { AiHubSpotApi, signRequest, type ApiClientOptions, type SpotCancelOrderParams, type SpotKlinesParams, type SpotPlaceOrderParams } from "./openapi.js";
+export { AiHubSpotApi, signRequest, type ApiClientOptions, type SpotCancelOrderParams, type SpotKlinesParams, type SpotOrderType, type SpotPlaceOrderParams } from "./openapi.js";
 export { diagnoseOpenApiBusinessError } from "./openapi-error-catalog.js";
 export { createToolRegistry, ToolRegistry, type ToolCapability, type ToolListOptions } from "./tools/tool-registry.js";
 export { confirmationContext, createToolExecutionContext } from "./tools/execution-context.js";
@@ -11,7 +12,7 @@ export { DEFAULT_MCP_RESPONSE_MODE, MCP_RESPONSE_MODES, parseMcpResponseMode, ty
 export { clearSymbolRuleCache, floorDecimal, getCachedSymbols, getSymbolRule, isAtLeastDecimal, preflightSymbolOrder, subtractNonNegativeDecimal, type SymbolRule } from "./tools/symbol-rules.js";
 export { clearTickerSummaryCache, getCachedTickerSummarySource } from "./tools/ticker-summary-cache.js";
 export { STANDARD_LIST_LIMIT, STANDARD_PAGE_SIZE, listLimitSchema, normalizedListLimit, truncateUnpagedListResponse, type ListLimit, type UnpagedListLimit } from "./tools/list-limit.js";
-export { findAssetBalance, requireAvailableBalance, type AssetBalance } from "./tools/account-balance.js";
+export { findAssetBalance, listAssetBalances, listNonZeroAssetBalances, requireAvailableBalance, type AssetBalance, type AssetBalanceList, type CompactBalanceList } from "./tools/account-balance.js";
 export type { JsonSchema, ToolAccess, ToolExecutionContext, ToolOperation, ToolRiskLevel, ToolSpec } from "./tools/tool-spec.js";
 export {
   ConfigStore,

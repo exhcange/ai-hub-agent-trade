@@ -19,6 +19,7 @@ All commands are read-only and use the OpenAPI URL from the selected local profi
 | `ai-hub market trades-summary` | `--symbol` | `--limit` (1–50), `--profile` |
 | `ai-hub market klines` | `--symbol`, `--interval` | `--start-time`, `--end-time`, `--timezone`, `--limit` (1–50), `--profile` |
 | `ai-hub market klines-summary` | `--symbol` | `--interval` (defaults to `60min`), `--start-time`, `--end-time`, `--timezone`, `--limit` (1–50), `--profile` |
+| `ai-hub market klines-1min-history` | `--symbol` | `--start-time`, `--end-time`, `--limit` (1–50), `--profile` |
 
 Examples:
 
@@ -33,6 +34,7 @@ ai-hub market ticker-summary --quote-asset USDT --limit 5
 ai-hub market depth-summary --symbol BTCUSDT --limit 10
 ai-hub market trades-summary --symbol BTCUSDT --limit 20
 ai-hub market klines-summary --symbol BTCUSDT --interval 60min --limit 20
+ai-hub market klines-1min-history --symbol BTCUSDT --start-time 1722470400000 --end-time 1722474000000 --limit 20
 ```
 
 ## Kline parameter rules
@@ -43,5 +45,6 @@ ai-hub market klines-summary --symbol BTCUSDT --interval 60min --limit 20
 - `--start-time` and `--end-time` are inclusive Unix timestamps in milliseconds. `start-time` cannot be after `end-time`.
 - `--timezone` is optional (`UTC+08` by default); daily, weekly, and monthly data may vary by timezone.
 - The CLI returns newest-first candles with a maximum of 50 rows in both raw and summary commands.
+- `klines-1min-history` calls `GET /sapi/v2/klines_1min`; its server response is capped locally to the requested limit because the upstream endpoint has no page-size parameter.
 
 For a generic pair list, use `ai-hub market symbols-overview` first. Use `symbols-list` for a paged quote-asset list, `symbols-search --query <asset>` for a keyword lookup, and `symbol-info` only when the exact symbol's precision or minimum rules are needed. `symbols` returns complete metadata in pages of at most 50 rows.

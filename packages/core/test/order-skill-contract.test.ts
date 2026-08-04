@@ -18,6 +18,9 @@ test("spot-order Skill documents the Core CLI command and unit agreement", async
     ["spot", "order", "market-buy"],
     ["spot", "order", "market-sell"],
     ["spot", "order", "limit"],
+    ["spot", "order", "stop-limit"],
+    ["spot", "order", "stop-market-buy"],
+    ["spot", "order", "stop-market-sell"],
     ["spot", "order", "batch-place"]
   ]) {
     assert.ok(registry.byCliPath(path), `Core must expose ${path.join(" ")}`);
@@ -26,9 +29,14 @@ test("spot-order Skill documents the Core CLI command and unit agreement", async
   assert.match(skill, /spot order market-buy/);
   assert.match(skill, /spot order market-sell/);
   assert.match(skill, /spot order limit/);
+  assert.match(skill, /spot order stop-limit/);
+  assert.match(skill, /spot order stop-market-buy/);
+  assert.match(skill, /spot order stop-market-sell/);
   assert.doesNotMatch(skill, /spot order place/);
   assert.match(reference, /--quote-amount/);
   assert.match(reference, /--base-quantity/);
+  assert.match(reference, /--trigger-price/);
+  assert.match(reference, /POST_ONLY/);
   assert.doesNotMatch(reference, /spot order place/);
   assert.doesNotMatch(reference, /--volume/);
   assert.match(skill, new RegExp(`version: "${JSON.parse(cliPackage).version}"`));

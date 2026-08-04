@@ -1,6 +1,6 @@
 # AI Hub Agent Trade MCP
 
-Install with `npm install -g @aihubspot/agent-trade-mcp`, then start `ai-hub-trade-mcp --profile default`. The default Toolset exposes the focused market, spot-order, universal-transfer, and wallet-query workflows. Use `--toolset full` to expose every supported Core capability. Read responses use compact text by default; use `--response-mode compat` only for clients that require the legacy duplicated JSON text.
+Install with `npm install -g @aihubspot/agent-trade-mcp`, then start `ai-hub-trade-mcp --profile default`. Both `default` and `full` expose every supported Core capability; the names remain only for configuration compatibility. Read responses use compact text by default; use `--response-mode compat` only for clients that require legacy text JSON.
 
 This package provides a local stdio MCP server. State-changing operations require a preview and a new explicit user confirmation.
 
@@ -22,10 +22,12 @@ ai-hub-trade-mcp setup --client codex --profile default --response-mode compat
 
 Setup registers the currently installed MCP binary through its absolute Node runtime and entrypoint path, so desktop clients do not depend on a global PATH or an unpublished `npx` package. Cursor and Claude Desktop configurations are merged with existing MCP servers through their JSON configurations. Claude Code, Codex, and OpenClaw are registered through their official CLIs; Claude Code uses user scope. Existing JSON configurations are validated, atomically updated, and backed up before their first modification. The setup command stores no API credentials; the MCP server continues to read its profile from `~/.ai-hub/config.toml`.
 
+Setup registers the default profile as `aihub`; a named profile becomes `aihub-<profile>`. Existing `ai-hub-trade-mcp*` registrations are kept and a migration note is printed, so remove the old registration manually only after confirming the new one works.
+
 For OpenClaw, run setup on the machine that runs the OpenClaw Gateway and as the same operating-system user as that Gateway. The selected AI Hub profile must exist in that user's `~/.ai-hub/config.toml`. Verify the registration after setup:
 
 ```bash
-openclaw mcp doctor ai-hub-trade-mcp-default --probe
+openclaw mcp doctor aihub --probe
 openclaw mcp reload
 ```
 
@@ -35,15 +37,13 @@ Use `spot_prepare_market_buy` or `margin_prepare_market_buy` only with `quoteAmo
 
 Before any order preview, MCP lazily loads `/sapi/v2/symbols` once per local profile and caches the symbol rules for one hour in memory and an isolated local cache. Known quantity/price precision and limit-order minimum violations are rejected before confirmation.
 
+## Advanced order types
+
+`spot_prepare_limit_order` accepts `type: LIMIT|IOC|FOK|POST_ONLY` and sends that type directly to OpenAPI. `STOP` and `STOP_MARKET` have focused prepare tools: `spot_prepare_stop_limit_order`, `spot_prepare_stop_market_buy`, and `spot_prepare_stop_market_sell`. Conditional orders always require `triggerPrice`; STOP also requires `price`. STOP_MARKET BUY uses `quoteAmount`, while STOP_MARKET SELL uses `baseQuantity`. The same capabilities are available only in the `full` Toolset for margin through `margin_prepare_*` tools.
+
 ## Read response
 
-All read tools return `{ "ok": true, "data": ... }` in one of these stable forms:
-
-- Arrays: `{ "dataType": "array", "items": [...], "count": 500 }`
-- Objects: `{ "dataType": "object", "value": { ... } }`
-- Scalars: `{ "dataType": "scalar", "value": "..." }`
-
-MCP clients receive the full envelope in `structuredContent`, validated by each read tool's output schema. In the default `compact` mode, text contains only the response type plus safe list metadata (`count`, `returnedCount`, `totalCount`, `nextOffset`, or `truncated` when applicable), so the same JSON is not duplicated in the Agent context. Use `--response-mode compat` to also place the full envelope in text. Check `data.dataType` before formatting; do not infer raw OpenAPI nesting.
+All reads use `{ "ok": true, "data": <native compact Core result> }` in `structuredContent`. In `compact` mode, text contains only a short count or availability summary, avoiding duplicate result JSON. `compat` retains the complete JSON text envelope for older clients. Only the two frequent balance tools include explicit output schemas; other results remain native to their focused Core Tool.
 
 ## Bounded market analysis
 
@@ -58,4 +58,4 @@ Use these tools for requests that would otherwise return a broad market payload:
 - `market_get_trades_summary`: price range, buy/sell statistics, and up to 50 recent trades.
 - `market_get_klines_summary`: period change, high/low, latest candle, and up to 50 candles. It defaults to `60min`; formal intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month`.
 
-The default Toolset exposes only these bounded forms. The `full` Toolset additionally exposes raw symbols, depth, trades, and kline responses for explicit advanced use. Every list is limited to 50 rows; raw symbols are paged with `offset` and `nextOffset`.
+All Toolsets expose bounded and advanced functions alike. Every list is limited to 50 rows; raw symbols are paged with `offset` and `nextOffset`.

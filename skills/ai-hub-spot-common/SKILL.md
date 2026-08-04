@@ -1,12 +1,16 @@
 ---
 name: ai-hub-spot-common
-version: "0.1.14"
+version: "0.1.15"
 description: Use this Skill when a user asks for AI Hub public spot market data, including connection status, server time, symbols, ticker data, order-book depth, recent trades, or candlesticks. Use the local ai-hub CLI, require no credentials for these commands, and route account or state-changing requests to the focused Skill.
 ---
 
 # AI Hub Spot Common
 
 Use this Skill for public spot market information. All commands in this Skill are read-only and may run without API credentials.
+
+## MCP First
+
+If AI Hub MCP Tools are available, call the matching `market_*` Tool directly. Do not read CLI references, run CLI help, or inspect configuration first. Use CLI Fast Path only when MCP is unavailable.
 
 ## Prerequisites
 
@@ -32,6 +36,7 @@ For a complete public-market request, run the exact CLI command immediately. Do 
 | `ai-hub market depth-summary` | Get best bid/ask, spread, and bounded book levels. |
 | `ai-hub market trades-summary` | Get bounded recent-trade statistics and samples. |
 | `ai-hub market klines-summary` | Get bounded candle analysis and samples. |
+| `ai-hub market klines-1min-history` | Get bounded historical one-minute candles from the dedicated historical endpoint. |
 | `ai-hub market depth` | Get order-book depth for one symbol. |
 | `ai-hub market trades` | Get recent trades for one symbol. |
 | `ai-hub market klines` | Get candlesticks for one symbol and interval. |

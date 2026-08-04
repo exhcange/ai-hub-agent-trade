@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { AiHubError, ConfigStore, configFilePath, confirmationContext, createToolExecutionContext, createToolRegistry, FileConfirmationStore, toAiHubErrorPayload, type ToolSpec } from "@ai-hub/agent-trade-core";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { AI_HUB_RELEASE_VERSION, AiHubError, ConfigStore, configFilePath, confirmationContext, createToolExecutionContext, createToolRegistry, FileConfirmationStore, toAiHubErrorPayload, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 function printHelp(): void {
   process.stdout.write(`AI Hub Agent Trade CLI
@@ -11,15 +13,16 @@ Usage:
   ai-hub config show [--profile <name>]
   ai-hub config remove --profile <name>
   ai-hub confirm --confirmation-id <id> --user-confirmation <new-user-message> [--profile <name>]
-  ai-hub market <ping|time|symbols|symbols-overview|symbols-list|symbols-search|symbol-info|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary> [options]
-  ai-hub account <asset-balance> [options]
-  ai-hub spot order <test|get|open|fills|market-buy|market-sell|sell-available|limit|cancel|batch-place|batch-cancel> [options]
-  ai-hub margin order <get|open|fills|market-buy|market-sell|limit|cancel> [options]
+  ai-hub market <ping|time|symbols|symbols-overview|symbols-list|symbols-search|symbol-info|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary|klines-1min-history> [options]
+  ai-hub account <asset-balance|balances> [options]
+  ai-hub spot order <test|get|open|history|fills|market-buy|market-sell|sell-available|limit|stop-limit|stop-market-buy|stop-market-sell|cancel|batch-place|batch-cancel> [options]
+  ai-hub margin order <get|open|fills|market-buy|market-sell|limit|stop-limit|stop-market-buy|stop-market-sell|cancel> [options]
   ai-hub wallet <transfer|transfer-history|deposit-history|deposit-address|withdraw-address|transferable-assets|withdraw|withdraw-history> [options]
   ai-hub sub-account <list|create|set-trading-status|assets|root-transfer|root-transfer-history|internal-transfer|internal-transfer-history> [options]
   ai-hub sub-account api-key <list|set-ip|delete> [options]
 
 State-changing commands only create a preview and exit. After a new user confirmation, run ai-hub confirm with the returned confirmation ID.
+ai-hub account asset-balance --asset <asset> queries one asset. ai-hub account balances lists compact balances from /sapi/v1/account.
 Credentials are prompted interactively and saved as plaintext in ~/.ai-hub/config.toml (mode 600).
 Array arguments such as --orders and --order-ids use a JSON array value.
 `);
@@ -159,6 +162,10 @@ async function runConfirmation(args: string[], profileName: string | undefined):
 }
 
 export async function run(argv: string[]): Promise<void> {
+  if (argv.includes("--version") || argv.includes("-V")) {
+    json({ version: AI_HUB_RELEASE_VERSION });
+    return;
+  }
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     printHelp();
     return;
@@ -209,7 +216,16 @@ export async function run(argv: string[]): Promise<void> {
   }
 }
 
-run(process.argv.slice(2)).catch((error: unknown) => {
+function isDirectExecution(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectExecution()) run(process.argv.slice(2)).catch((error: unknown) => {
   const payload = toAiHubErrorPayload(error);
   process.stderr.write(`${JSON.stringify(payload)}\n`);
   process.exitCode = 1;

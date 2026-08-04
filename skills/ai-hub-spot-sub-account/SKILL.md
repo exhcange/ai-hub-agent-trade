@@ -1,12 +1,16 @@
 ---
 name: ai-hub-spot-sub-account
-version: "0.1.14"
+version: "0.1.15"
 description: Use this Skill when a user asks to list, inspect, create, configure, or transfer assets for supported AI Hub sub-accounts, including sub-account assets, API-key IP lists, and transfer histories. Use the local ai-hub CLI with a configured credential profile. Every state-changing sub-account action requires an exact preview and a new manual user confirmation.
 ---
 
 # AI Hub Spot Sub-accounts
 
 Use this Skill for supported sub-account operations only. Do not assume a sub-account identifier, account type, transfer type, API key, IP address, or status value.
+
+## MCP First
+
+If AI Hub MCP Tools are available, call the matching `sub_account_*` Tool directly. For writes, use only `sub_prepare_*`, then stop for a new user message before `confirm_action`. Do not read CLI references, run CLI help, or inspect configuration first. Use CLI Fast Path only when MCP is unavailable.
 
 ## Prerequisites
 

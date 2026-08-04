@@ -48,7 +48,7 @@ test("updates both existing macOS Claude and Claude-3p MCP registries", async ()
   for (const [configPath, existingName] of [[legacyPath, "legacy"], [modernPath, "modern"]] as const) {
     const config = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers: Record<string, unknown> };
     assert.ok(config.mcpServers[existingName]);
-    assert.ok(config.mcpServers["ai-hub-trade-mcp-default"]);
+    assert.ok(config.mcpServers.aihub);
     assert.ok(await readFile(`${configPath}.bak`, "utf8"));
   }
 });
@@ -78,11 +78,30 @@ test("merges a Cursor MCP registration and keeps an existing server", async () =
 
   const config = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers: Record<string, { command: string; args: string[] }> };
   assert.deepEqual(config.mcpServers.existing, { command: "other" });
-  assert.deepEqual(config.mcpServers["ai-hub-trade-mcp-tenant-a"], {
+  assert.deepEqual(config.mcpServers["aihub-tenant-a"], {
     command: "/usr/local/bin/node",
     args: ["/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "tenant-a", "--toolset", "default", "--response-mode", "compact"]
   });
   assert.equal(await readFile(`${configPath}.bak`, "utf8"), JSON.stringify({ mcpServers: { existing: { command: "other" } } }));
+});
+
+test("keeps an existing legacy MCP registration and reports the migration", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const configPath = join(home, ".cursor", "mcp.json");
+  await (await import("node:fs/promises")).mkdir(join(home, ".cursor"), { recursive: true });
+  await writeFile(configPath, JSON.stringify({ mcpServers: { "ai-hub-trade-mcp-default": { command: "legacy" } } }), "utf8");
+  const output: string[] = [];
+  const originalWrite = process.stdout.write;
+  process.stdout.write = ((chunk: string | Uint8Array) => { output.push(String(chunk)); return true; }) as typeof process.stdout.write;
+  try {
+    runMcpSetup(setupOptions("cursor", "default"), { home, platform: "darwin", cwd: home });
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+  const config = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers: Record<string, unknown> };
+  assert.ok(config.mcpServers["ai-hub-trade-mcp-default"]);
+  assert.ok(config.mcpServers.aihub);
+  assert.match(output.join(""), /Migration note/);
 });
 
 test("preserves the first MCP configuration backup across repeated setup", async () => {
@@ -98,8 +117,8 @@ test("preserves the first MCP configuration backup across repeated setup", async
 
   assert.equal(await readFile(`${configPath}.bak`, "utf8"), original);
   const config = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers: Record<string, unknown> };
-  assert.ok(config.mcpServers["ai-hub-trade-mcp-tenant-a"]);
-  assert.ok(config.mcpServers["ai-hub-trade-mcp-tenant-b"]);
+  assert.ok(config.mcpServers["aihub-tenant-a"]);
+  assert.ok(config.mcpServers["aihub-tenant-b"]);
   assert.equal((await stat(configPath)).mode & 0o777, 0o600);
 });
 
@@ -156,15 +175,15 @@ test("uses the official client CLIs for Claude Code, Codex, and OpenClaw", async
   assert.deepEqual(commands, [
     {
       command: "claude",
-      args: ["mcp", "add", "--scope", "user", "--transport", "stdio", "ai-hub-trade-mcp-default", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default", "--toolset", "default", "--response-mode", "compact"]
+      args: ["mcp", "add", "--scope", "user", "--transport", "stdio", "aihub", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default", "--toolset", "default", "--response-mode", "compact"]
     },
     {
       command: "codex",
-      args: ["mcp", "add", "ai-hub-trade-mcp-default", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default", "--toolset", "default", "--response-mode", "compact"]
+      args: ["mcp", "add", "aihub", "--", "/usr/local/bin/node", "/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "default", "--toolset", "default", "--response-mode", "compact"]
     },
     {
       command: "openclaw",
-      args: ["mcp", "add", "ai-hub-trade-mcp-default", "--command", "/usr/local/bin/node", "--arg=/opt/ai-hub/agent-trade-mcp/dist/index.js", "--arg=--profile", "--arg=default", "--arg=--toolset", "--arg=default", "--arg=--response-mode", "--arg=compact"]
+      args: ["mcp", "add", "aihub", "--command", "/usr/local/bin/node", "--arg=/opt/ai-hub/agent-trade-mcp/dist/index.js", "--arg=--profile", "--arg=default", "--arg=--toolset", "--arg=default", "--arg=--response-mode", "--arg=compact"]
     }
   ]);
 });

@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-deposit-withdraw
-version: "0.1.14"
+version: "0.1.15"
 description: Use this Skill when a user asks about AI Hub wallet assets, deposit history or addresses, withdrawal addresses or history, transferable assets, wallet transfer history, wallet transfers, or withdrawals. Use the local ai-hub CLI with a configured credential profile. Wallet transfers and withdrawals require the mandatory preview and new manual confirmation boundary.
 ---
 
@@ -9,6 +9,10 @@ description: Use this Skill when a user asks about AI Hub wallet assets, deposit
 Use this Skill for supported wallet operations. Treat asset balances, addresses, and transaction history as sensitive user data. Do not fabricate an address, network detail, account type, or transfer direction.
 
 Account types are fixed: `1` Spot, `2` Isolated Margin, `3` Cross Margin, `4` C2C, and `5` Derivatives. Account type `2` is never Derivatives. A wallet transfer involving type `2` requires the isolated-margin trading pair in `symbol`.
+
+## MCP First
+
+If AI Hub MCP Tools are available, call the matching `wallet_*` Tool directly. For writes, use only `wallet_prepare_*`, then stop for a new user message before `confirm_action`. Do not read CLI references, run CLI help, or inspect configuration first. Use CLI Fast Path only when MCP is unavailable.
 
 ## Prerequisites
 

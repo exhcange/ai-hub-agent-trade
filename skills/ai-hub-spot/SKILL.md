@@ -1,12 +1,18 @@
 ---
 name: ai-hub-spot
-version: "0.1.14"
-description: Use this Skill for supported AI Hub spot-market, account, order, wallet, or sub-account requests. Route the request to the focused AI Hub Skill, use the local ai-hub CLI, and enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for unsupported products or capabilities.
+version: "0.1.15"
+description: Use this Skill for supported AI Hub spot-market, account, order, wallet, or sub-account requests. Prefer the matching AI Hub MCP Tool; use the local ai-hub CLI only when MCP is unavailable. Enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for unsupported products or capabilities.
 ---
 
 # AI Hub Spot
 
-Route supported spot-account requests to the most specific Skill. Use the `ai-hub` CLI as the primary execution interface. Do not invent commands or capabilities outside the installed CLI.
+Route supported spot-account requests to the matching MCP Tool when AI Hub MCP is available. Use the `ai-hub` CLI only as an MCP fallback. Do not invent commands or capabilities outside the installed integration.
+
+## MCP First
+
+When AI Hub MCP Tools are available, call the exact matching MCP Tool immediately. Do not load a focused Skill, CLI reference, `ai-hub --help`, or `config show` first. For writes, call only the matching `prepare_*` Tool, then stop for a new user message before `confirm_action`.
+
+When MCP is unavailable, use the focused CLI command through its Fast Path. Load a reference only for setup, missing or ambiguous parameters, or an API error.
 
 ## Prerequisites
 
@@ -18,17 +24,17 @@ When the request maps to one installed CLI command and all required parameters a
 
 ## Routing
 
-| User intent | Load this Skill |
+| User intent | MCP Tool / CLI fallback |
 | --- | --- |
-| Price, symbols, depth, trades, or candles | [ai-hub-spot-common](../ai-hub-spot-common/SKILL.md) |
-| One spot-asset balance | [ai-hub-spot-account](../ai-hub-spot-account/SKILL.md) |
-| Test, inspect, place, cancel, or list spot orders | [ai-hub-spot-order](../ai-hub-spot-order/SKILL.md) |
-| Deposit, withdrawal, wallet balance, wallet transfer, or address | [ai-hub-spot-deposit-withdraw](../ai-hub-spot-deposit-withdraw/SKILL.md) |
-| Sub-account list, assets, API-key IP list, or transfer | [ai-hub-spot-sub-account](../ai-hub-spot-sub-account/SKILL.md) |
+| View asset balances | `account_list_balances` / `ai-hub account balances` |
+| View one asset such as USDT | `account_get_asset_balance` / `ai-hub account asset-balance --asset USDT` |
+| View BTC price | `market_get_ticker` / `ai-hub market ticker --symbol BTCUSDT` |
+| View open spot orders | `spot_get_open_orders` / `ai-hub spot order open` |
+| Other market, order, wallet, or sub-account work | Matching focused MCP Tool / matching focused CLI Skill |
 
 ## Safety Boundary
 
-Execute read-only commands after validating the parameters. For every state-changing action, produce the CLI preview, stop, and wait for a new explicit user message before separately invoking `ai-hub confirm`. Never supply that message or convert an initial request into approval.
+Execute read-only MCP Tools directly when available. For every state-changing MCP action, use its `prepare_*` Tool, stop, and wait for a new explicit user message before `confirm_action`. When MCP is unavailable, use the same boundary through CLI preview and `ai-hub confirm`. Never supply or infer the confirmation.
 
 ## Business Failures
 
@@ -46,4 +52,4 @@ ai-hub config set-credentials --profile default
 
 The API key and secret key are saved as plaintext in `~/.ai-hub/config.toml` with mode `600`; never copy them into a prompt, command argument, or source-controlled file.
 
-Read [references/cli-routing.md](references/cli-routing.md) only when the request does not map directly to one command.
+Read [references/cli-routing.md](references/cli-routing.md) only when MCP is unavailable and the request does not map directly to one CLI command.
