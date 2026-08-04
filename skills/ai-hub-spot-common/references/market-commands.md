@@ -11,6 +11,7 @@ All commands are read-only and use the OpenAPI URL from the selected local profi
 | `ai-hub market symbols-list` | None | `--quote-asset`, `--offset`, `--limit` (1–50), `--profile` |
 | `ai-hub market symbols-search` | `--query` | `--quote-asset`, `--limit` (1–50), `--profile` |
 | `ai-hub market symbol-info` | `--symbol` | `--profile` |
+| `ai-hub market price` | `--symbol` | `--profile` |
 | `ai-hub market ticker` | `--symbol` or `--symbols` | `--time-zone`, `--profile` |
 | `ai-hub market ticker-summary` | None | `--quote-asset`, `--limit` (1–50), `--profile` |
 | `ai-hub market depth` | `--symbol` | `--limit` (1–50), `--profile` |
@@ -29,6 +30,7 @@ ai-hub market symbols-overview --limit 12
 ai-hub market symbols-list --quote-asset USDT --offset 0 --limit 20
 ai-hub market symbols-search --query BTC
 ai-hub market symbol-info --symbol BTCUSDT
+ai-hub market price --symbol BTCUSDT
 ai-hub market ticker --symbol BTCUSDT
 ai-hub market ticker-summary --quote-asset USDT --limit 5
 ai-hub market depth-summary --symbol BTCUSDT --limit 10

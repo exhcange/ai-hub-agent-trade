@@ -31,6 +31,7 @@ For a complete public-market request, run the exact CLI command immediately. Do 
 | `ai-hub market symbols-list` | Browse a bounded page, optionally by quote asset. |
 | `ai-hub market symbols-search` | Search by a required keyword without trading-rule metadata. |
 | `ai-hub market symbol-info` | Get precision and minimum rules for one exact symbol. |
+| `ai-hub market price` | Get only the current price for one exact symbol. |
 | `ai-hub market ticker` | Get exact ticker data for an explicitly requested symbol or symbol list. |
 | `ai-hub market ticker-summary` | Get a bounded market overview, movers, and volume leaders. |
 | `ai-hub market depth-summary` | Get best bid/ask, spread, and bounded book levels. |

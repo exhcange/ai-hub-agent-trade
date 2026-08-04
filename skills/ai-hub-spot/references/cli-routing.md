@@ -13,7 +13,7 @@ Use the focused Skill for the command family instead of loading every command re
 Global profile option:
 
 ```bash
-ai-hub market ticker --symbol BTCUSDT --profile default
+ai-hub market price --symbol BTCUSDT --profile default
 ```
 
 The profile option may appear with any API command. It selects the locally stored OpenAPI URL and credential reference; it never exposes the secret values.
