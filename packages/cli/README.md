@@ -1,6 +1,22 @@
 # AI Hub Agent Trade CLI
 
+The package installs two commands:
+
+- `ai-hub` provides exact structured commands for every supported capability.
+- `aihub <request>` provides a deterministic fast path for common balance, price, and open-order reads. It renders Core results directly. Ambiguous requests fall back to an isolated Codex `gpt-5.6-luna`/`low` Agent that loads only the globally installed `ai-hub-trade-mcp`; use `--no-agent` to disable fallback.
+
+Examples:
+
+```bash
+aihub show asset balances
+aihub show USDT balance
+aihub show BTCUSDT price
+aihub show open orders
+```
+
 Install globally with `npm install -g @aihubspot/agent-trade-cli`, then run `ai-hub --help`.
+
+The complex-request fallback requires both global packages: `npm install -g @aihubspot/agent-trade-cli @aihubspot/agent-trade-mcp`. Common deterministic reads do not start Codex or MCP.
 
 Create a local profile and enter credentials interactively:
 

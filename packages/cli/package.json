@@ -1,6 +1,6 @@
 {
   "name": "@aihubspot/agent-trade-cli",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Local spot trading command-line tools for AI Hub",
   "license": "UNLICENSED",
   "repository": {
@@ -11,7 +11,8 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "ai-hub": "./dist/index.js"
+    "ai-hub": "./dist/index.js",
+    "aihub": "./dist/fast.js"
   },
   "files": ["dist", "README.md"],
   "publishConfig": { "access": "public" },

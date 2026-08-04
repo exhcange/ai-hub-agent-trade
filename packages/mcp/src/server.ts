@@ -3,7 +3,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, typ
 import { AI_HUB_RELEASE_VERSION, AiHubError, createToolExecutionContext, createToolRegistry, DEFAULT_MCP_RESPONSE_MODE, DEFAULT_MCP_TOOLSET, selectMcpToolset, toAiHubErrorPayload, ToolWriteExecutor, type McpResponseMode, type McpToolset, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 const CONFIRM_ACTION_TOOL = "confirm_action";
-const SEMANTIC_INPUT_FIELDS = new Set(["quoteAmount", "baseQuantity", "price", "triggerPrice", "side", "type", "orders", "amount", "address", "fromAccountType", "toAccountType", "isolated"]);
+const SEMANTIC_INPUT_FIELDS = new Set(["quoteAmount", "baseQuantity", "price", "triggerPrice", "side", "type", "orders", "amount", "address", "fromAccountType", "toAccountType", "isolated", "nonZeroOnly"]);
 
 const ASSET_BALANCE_OUTPUT_SCHEMA: Tool["outputSchema"] = {
   type: "object",
@@ -148,7 +148,7 @@ function toMcpTool(tool: ToolSpec): Tool {
       readOnlyHint: tool.operation === "read",
       destructiveHint: tool.riskLevel === "high",
       idempotentHint: tool.operation === "read",
-      openWorldHint: true
+      openWorldHint: false
     }
   };
 }
@@ -163,8 +163,8 @@ function toPrepareMcpTool(tool: ToolSpec): Tool {
     ...toMcpTool(tool),
     name: prepareToolName(tool),
     title: `Prepare ${tool.title}`,
-    description: writeDescription(tool),
-    annotations: { readOnlyHint: false, destructiveHint: tool.riskLevel === "high", idempotentHint: true, openWorldHint: false }
+    description: compactDescription(writeDescription(tool)),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   };
 }
 
@@ -175,7 +175,10 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
   const writeExecutor = new ToolWriteExecutor(registry);
   const server = new Server(
     { name: "ai-hub-agent-trade", version: AI_HUB_RELEASE_VERSION },
-    { capabilities: { tools: {} }, instructions: "Use structuredContent for read results." }
+    {
+      capabilities: { tools: {} },
+      instructions: "Use structuredContent for reads. For a balance overview call account_list_balances with {}. For one current price use market_get_last_price. Prepare tools only preview and require a new user confirmation before confirm_action."
+    }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

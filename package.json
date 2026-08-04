@@ -1,7 +1,7 @@
 {
   "name": "ai-hub-agent-trade",
   "private": true,
-  "version": "0.1.15",
+  "version": "0.1.16",
   "type": "module",
   "packageManager": "pnpm@9.1.2",
   "engines": {
@@ -9,7 +9,7 @@
     "pnpm": ">=9"
   },
   "scripts": {
-    "build": "pnpm -r --if-present build",
+    "build": "pnpm --filter @ai-hub/agent-trade-core build && pnpm --filter @aihubspot/agent-trade-cli build && pnpm --filter @aihubspot/agent-trade-mcp build",
     "typecheck": "pnpm --filter @ai-hub/agent-trade-core build && pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "clean": "pnpm -r --if-present clean",

@@ -1,7 +1,7 @@
 import { AiHubError } from "../errors.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalInteger, optionalString, requiredString, strictObject } from "./validation.js";
-import { getSymbolInfo, listFullSymbols, listSymbols, searchSymbols, summarizeDepth, summarizeKlines, summarizeSymbolOverview, summarizeTickers, summarizeTrades } from "./market-summaries.js";
+import { getSymbolInfo, listFullSymbols, listSymbols, searchSymbols, summarizeDepth, summarizeKlines, summarizeLastPrice, summarizeSymbolOverview, summarizeTickers, summarizeTrades } from "./market-summaries.js";
 import { getCachedSymbols } from "./symbol-rules.js";
 import { STANDARD_LIST_LIMIT, listLimitSchema, normalizedListLimit } from "./list-limit.js";
 import { getCachedTickerSummarySource } from "./ticker-summary-cache.js";
@@ -191,9 +191,26 @@ export const marketTools: ToolSpec[] = [
     handler: async (input, context) => getSymbolInfo(await getCachedSymbols(context), (input as { symbol: string }).symbol)
   },
   {
+    name: "market_get_last_price",
+    title: "Get Spot Last Price",
+    description: "Get only symbol, last price, and timestamp for one exact spot symbol. Use this by default for current-price requests.",
+    cliPath: ["market", "price"],
+    module: "spot-common", access: "public", operation: "read", riskLevel: "low",
+    inputSchema: { type: "object", properties: { symbol: { type: "string", minLength: 1 } }, required: ["symbol"], additionalProperties: false },
+    errorCodes: readErrors,
+    validate: (input) => {
+      const value = strictObject(input, ["symbol"]);
+      return { symbol: requiredString(value, "symbol") };
+    },
+    handler: async (input, context) => {
+      const symbol = (input as { symbol: string }).symbol;
+      return summarizeLastPrice(await context.api.ticker({ symbol }), symbol);
+    }
+  },
+  {
     name: "market_get_ticker",
     title: "Get Spot Ticker",
-    description: "Get exact raw spot ticker data for one symbol or an explicitly requested symbol list. For an all-market overview, use market_get_ticker_summary instead.",
+    description: "Get full raw ticker fields for one symbol or an explicit symbol list. For current price use market_get_last_price; for all markets use market_get_ticker_summary.",
     cliPath: ["market", "ticker"],
     module: "spot-common", access: "public", operation: "read", riskLevel: "low",
     inputSchema: {

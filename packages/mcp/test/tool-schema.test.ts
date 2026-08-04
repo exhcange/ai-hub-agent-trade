@@ -41,6 +41,14 @@ for (const toolset of ["default", "full"] as const) {
       assert.ok(balance?.outputSchema);
       assert.ok(balances?.outputSchema);
       assert.equal(tools.find((tool) => tool.name === "market_get_ticker")?.outputSchema, undefined);
+      assert.equal((balances?.inputSchema.properties?.nonZeroOnly as { default?: unknown } | undefined)?.default, true);
+      const prepare = tools.find((tool) => tool.name === "spot_prepare_market_buy");
+      assert.deepEqual(prepare?.annotations, {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      });
     } finally {
       await client.close();
       await server.close();

@@ -11,6 +11,7 @@ export { DEFAULT_MCP_TOOLSET, MCP_TOOLSETS, parseMcpToolset, selectMcpToolset, t
 export { DEFAULT_MCP_RESPONSE_MODE, MCP_RESPONSE_MODES, parseMcpResponseMode, type McpResponseMode } from "./mcp-response-mode.js";
 export { clearSymbolRuleCache, floorDecimal, getCachedSymbols, getSymbolRule, isAtLeastDecimal, preflightSymbolOrder, subtractNonNegativeDecimal, type SymbolRule } from "./tools/symbol-rules.js";
 export { clearTickerSummaryCache, getCachedTickerSummarySource } from "./tools/ticker-summary-cache.js";
+export { matchAiHubFastRoute, renderAiHubFastResult, type AiHubFastRoute, type AiHubFastRouteKind } from "./fast-router.js";
 export { STANDARD_LIST_LIMIT, STANDARD_PAGE_SIZE, listLimitSchema, normalizedListLimit, truncateUnpagedListResponse, type ListLimit, type UnpagedListLimit } from "./tools/list-limit.js";
 export { findAssetBalance, listAssetBalances, listNonZeroAssetBalances, requireAvailableBalance, type AssetBalance, type AssetBalanceList, type CompactBalanceList } from "./tools/account-balance.js";
 export type { JsonSchema, ToolAccess, ToolExecutionContext, ToolOperation, ToolRiskLevel, ToolSpec } from "./tools/tool-spec.js";

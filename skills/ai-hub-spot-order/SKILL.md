@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-order
-version: "0.1.15"
+version: "0.1.16"
 description: Use this Skill when a user asks to test, retrieve, list current or historical orders, buy, sell, place limit-style or conditional spot orders, batch-place, cancel, or batch-cancel supported AI Hub spot orders. Use the local ai-hub CLI with a configured credential profile. Every state-changing action requires an exact preview followed by a new manual user confirmation.
 ---
 

@@ -17,6 +17,9 @@ test("asset-balance extracts one compact balance from the signed account respons
 
 test("account_list_balances uses the v1 overview and returns only compact requested balances", async () => {
   const registry = createToolRegistry();
+  const nonZeroOnlySchema = registry.byName("account_list_balances").inputSchema.properties?.nonZeroOnly as { default?: unknown; description?: unknown };
+  assert.equal(nonZeroOnlySchema.default, true);
+  assert.match(String(nonZeroOnlySchema.description), /explicitly asks to include zero balances/i);
   const context = {
     profile: { name: "tenant-a", openApiBaseUrl: "https://api.example.com", configVersion: "v1" },
     credentials: { apiKey: "test-key", secretKey: "test-secret", credentialVersion: "credential-v1" },

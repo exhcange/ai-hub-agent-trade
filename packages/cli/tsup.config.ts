@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 const coreEntry = fileURLToPath(new URL("../core/src/index.ts", import.meta.url));
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/fast.ts"],
   format: ["esm"],
   dts: true,
   clean: true,

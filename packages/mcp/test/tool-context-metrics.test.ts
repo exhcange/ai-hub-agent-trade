@@ -51,7 +51,7 @@ test("default MCP keeps every tool while reducing tools/list context by at least
   const response = await listTools("default");
   const current = measure(response.tools);
 
-  assert.equal(current.tools, PRE_COMPRESSION_FULL_BASELINE.tools - 1, "only system_get_capabilities was removed");
+  assert.equal(current.tools, PRE_COMPRESSION_FULL_BASELINE.tools, "system_get_capabilities was replaced by one focused last-price tool");
   assert.ok(current.jsonBytes <= PRE_COMPRESSION_FULL_BASELINE.jsonBytes * 0.7, JSON.stringify({ current, baseline: PRE_COMPRESSION_FULL_BASELINE }));
   assert.ok(current.descriptionChars < PRE_COMPRESSION_FULL_BASELINE.descriptionChars);
   assert.ok(current.schemaBytes < PRE_COMPRESSION_FULL_BASELINE.schemaBytes);

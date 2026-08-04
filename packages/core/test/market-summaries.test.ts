@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AiHubError, createToolRegistry } from "../src/index.js";
-import { getSymbolInfo, listSymbols, searchSymbols, summarizeDepth, summarizeKlines, summarizeSymbolOverview, summarizeTickers, summarizeTrades } from "../src/tools/market-summaries.js";
+import { getSymbolInfo, listSymbols, searchSymbols, summarizeDepth, summarizeKlines, summarizeLastPrice, summarizeSymbolOverview, summarizeTickers, summarizeTrades } from "../src/tools/market-summaries.js";
+
+test("last-price summary keeps only the requested symbol, price, and timestamp", () => {
+  assert.deepEqual(summarizeLastPrice({ last: "63573.99", high: "64244.07", low: "62299.98", time: 123 }, "BTC/USDT"), {
+    symbol: "BTCUSDT",
+    last: "63573.99",
+    time: "123"
+  });
+});
 
 test("ticker summary returns only the requested quote asset and bounded leaderboards", () => {
   const summary = summarizeTickers([
@@ -73,7 +81,7 @@ test("depth, trades, and kline summaries follow the actual OpenAPI payload shape
 
 test("registry exposes bounded market tools and keeps unfiltered ticker requests out of the raw tool", () => {
   const registry = createToolRegistry();
-  for (const name of ["market_get_symbol_overview", "market_list_symbols", "market_search_symbols", "market_get_symbol_info", "market_get_ticker_summary", "market_get_depth_summary", "market_get_trades_summary", "market_get_klines_summary"]) {
+  for (const name of ["market_get_symbol_overview", "market_list_symbols", "market_search_symbols", "market_get_symbol_info", "market_get_last_price", "market_get_ticker_summary", "market_get_depth_summary", "market_get_trades_summary", "market_get_klines_summary"]) {
     assert.equal(registry.byName(name).operation, "read");
   }
   assert.throws(

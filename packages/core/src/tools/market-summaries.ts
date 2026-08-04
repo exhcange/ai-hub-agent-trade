@@ -109,6 +109,21 @@ function tickerRows(value: unknown): JsonRecord[] {
   throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "Ticker response must be an array.");
 }
 
+/** Returns only the fields needed for a current-price request. */
+export function summarizeLastPrice(value: unknown, symbol: string): JsonRecord {
+  const payload = Array.isArray(value)
+    ? records(value, "Ticker response must contain ticker objects.")[0]
+    : record(value, "Ticker response must be an object.");
+  if (!payload) throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "Ticker response did not contain a ticker.");
+  const last = text(payload.last);
+  if (last === null) throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "Ticker response did not contain the last price.");
+  return {
+    symbol: symbol.replaceAll("/", "").trim().toUpperCase(),
+    last,
+    time: text(payload.time)
+  };
+}
+
 function quoteFromSymbol(symbol: string | null): string | null {
   if (!symbol) return null;
   const parts = symbol.split("/");

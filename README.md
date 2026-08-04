@@ -2,12 +2,15 @@
 
 Local CLI, MCP, and Skills for AI Hub spot trading integrations.
 
+For low-latency natural-language reads, the CLI package also installs `aihub`. Requests such as `aihub show asset balances` and `aihub show BTCUSDT price` use a deterministic Core fast path and render the final result without an Agent. Requests outside the bounded fast surface fall back to a Codex `gpt-5.6-luna`/`low` Agent restricted to the configured AI Hub MCP server.
+
 ## Implemented foundation
 
 - SaaS-safe local profiles at `~/.ai-hub/config.toml`.
 - Plaintext API credentials stored in the local profile at `~/.ai-hub/config.toml`.
 - Public spot market reads: connectivity, server time, symbols, ticker, depth, trades, and klines.
 - Bounded symbol overview, pagination, keyword search, and exact trading-rule lookup for responsive Agent interactions.
+- Compact single-symbol last-price reads through `market_get_last_price` / `ai-hub market price`.
 - Signed account, wallet, sub-account, margin, and transfer read capabilities.
 - Local stdio MCP and CLI tools for single/batch spot orders, v2 margin orders, wallet transfers and withdrawals, and sub-account administration.
 - Shared Tool Registry for MCP and CLI schemas, validation, access controls, error codes, and handlers.

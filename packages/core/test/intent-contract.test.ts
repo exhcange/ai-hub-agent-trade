@@ -7,7 +7,8 @@ test("common Agent intents resolve to one focused Core Tool", () => {
   const expected = [
     ["generic balance", "account_list_balances", "read"],
     ["one-asset balance", "account_get_asset_balance", "read"],
-    ["ticker", "market_get_ticker", "read"],
+    ["current price", "market_get_last_price", "read"],
+    ["full ticker", "market_get_ticker", "read"],
     ["open orders", "spot_get_open_orders", "read"],
     ["market buy", "spot_market_buy", "write"],
     ["limit order", "spot_limit_order", "write"],

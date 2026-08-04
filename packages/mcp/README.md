@@ -4,6 +4,8 @@ Install with `npm install -g @aihubspot/agent-trade-mcp`, then start `ai-hub-tra
 
 This package provides a local stdio MCP server. State-changing operations require a preview and a new explicit user confirmation.
 
+Preview tools are annotated read-only because they only validate and persist an expiring local preview; they never submit an OpenAPI write. `confirm_action` remains destructive and always requires a new explicit user confirmation.
+
 It reads the same local profile as the CLI from `~/.ai-hub/config.toml`. The API key and secret key are stored as plaintext in that file with mode `600`; configure them once through `ai-hub config set-credentials --profile <name>`. Do not share this file.
 
 ## Client setup
@@ -54,6 +56,7 @@ Use these tools for requests that would otherwise return a broad market payload:
 - `market_search_symbols`: required-keyword lookup with at most 50 basic matching rows. Do not use it for a generic pair list.
 - `market_get_symbol_info`: exact precision and minimum order rules for one symbol only.
 - `market_get_ticker_summary`: watchlist, gainers, losers, and quote-volume leaders under one total result budget (20 by default, 50 maximum).
+- `market_get_last_price`: symbol, current last price, and timestamp only. Use this for a single-symbol current-price request.
 - `market_get_depth_summary`: best bid/ask, spread, and up to 50 levels per side.
 - `market_get_trades_summary`: price range, buy/sell statistics, and up to 50 recent trades.
 - `market_get_klines_summary`: period change, high/low, latest candle, and up to 50 candles. It defaults to `60min`; formal intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month`.

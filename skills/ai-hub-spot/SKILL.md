@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot
-version: "0.1.15"
+version: "0.1.16"
 description: Use this Skill for supported AI Hub spot-market, account, order, wallet, or sub-account requests. Prefer the matching AI Hub MCP Tool; use the local ai-hub CLI only when MCP is unavailable. Enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for unsupported products or capabilities.
 ---
 
@@ -28,7 +28,7 @@ When the request maps to one installed CLI command and all required parameters a
 | --- | --- |
 | View asset balances | `account_list_balances` / `ai-hub account balances` |
 | View one asset such as USDT | `account_get_asset_balance` / `ai-hub account asset-balance --asset USDT` |
-| View BTC price | `market_get_ticker` / `ai-hub market ticker --symbol BTCUSDT` |
+| View BTC price | `market_get_last_price` / `ai-hub market price --symbol BTCUSDT` |
 | View open spot orders | `spot_get_open_orders` / `ai-hub spot order open` |
 | Other market, order, wallet, or sub-account work | Matching focused MCP Tool / matching focused CLI Skill |
 

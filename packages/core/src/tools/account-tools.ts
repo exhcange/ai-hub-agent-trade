@@ -70,7 +70,11 @@ export const accountTools: ToolSpec[] = [
       type: "object",
       properties: {
         assets: { type: "array", items: { type: "string" }, maxItems: 50, description: "Optional asset codes." },
-        nonZeroOnly: { type: "boolean", description: "Defaults to true." },
+        nonZeroOnly: {
+          type: "boolean",
+          default: true,
+          description: "Omit or set true for normal balance overviews. Set false only when the user explicitly asks to include zero balances."
+        },
         limit: listLimitSchema(ACCOUNT_BALANCE_LIST_LIMIT)
       },
       additionalProperties: false

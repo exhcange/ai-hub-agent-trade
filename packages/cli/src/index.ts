@@ -13,7 +13,7 @@ Usage:
   ai-hub config show [--profile <name>]
   ai-hub config remove --profile <name>
   ai-hub confirm --confirmation-id <id> --user-confirmation <new-user-message> [--profile <name>]
-  ai-hub market <ping|time|symbols|symbols-overview|symbols-list|symbols-search|symbol-info|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary|klines-1min-history> [options]
+  ai-hub market <ping|time|symbols|symbols-overview|symbols-list|symbols-search|symbol-info|price|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary|klines-1min-history> [options]
   ai-hub account <asset-balance|balances> [options]
   ai-hub spot order <test|get|open|history|fills|market-buy|market-sell|sell-available|limit|stop-limit|stop-market-buy|stop-market-sell|cancel|batch-place|batch-cancel> [options]
   ai-hub margin order <get|open|fills|market-buy|market-sell|limit|stop-limit|stop-market-buy|stop-market-sell|cancel> [options]
