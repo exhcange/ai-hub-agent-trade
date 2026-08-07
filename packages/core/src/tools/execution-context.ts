@@ -7,8 +7,7 @@ import type { ToolExecutionContext } from "./tool-spec.js";
 /** Loads one isolated local SaaS profile for one CLI command or MCP Tool call. */
 export async function createToolExecutionContext(profileName?: string, apiOptions?: ApiClientOptions): Promise<ToolExecutionContext> {
   const store = new ConfigStore();
-  const profile = await store.showProfile(profileName);
-  const credentials = await store.getCredentials(profile.name);
+  const { profile, credentials } = await store.resolveProfileWithCredentials(profileName);
   return { profile, credentials, api: new AiHubSpotApi(profile.openApiBaseUrl, apiOptions) };
 }
 

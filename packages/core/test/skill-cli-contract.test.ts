@@ -4,7 +4,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import test from "node:test";
-import { createToolRegistry } from "../src/index.js";
+import { createToolRegistry, skillRoutingMarkdown } from "../src/index.js";
 
 const sourceSkills = fileURLToPath(new URL("../../../skills/", import.meta.url));
 const publishedSkills = fileURLToPath(new URL("../../../../ai-hub-agent-skills/skills/", import.meta.url));
@@ -51,4 +51,12 @@ test("account Skill maps generic and one-asset balance intents to distinct CLI p
   const registry = createToolRegistry();
   assert.equal(registry.byCliPath(["account", "balances"]).name, "account_list_balances");
   assert.equal(registry.byCliPath(["account", "asset-balance"]).name, "account_get_asset_balance");
+});
+
+test("source and publish Skill packs share the generated MCP routing boundary", async () => {
+  const sourceRouting = join(sourceSkills, "_shared", "mcp-routing.md");
+  assert.equal(await readFile(sourceRouting, "utf8"), skillRoutingMarkdown());
+  if (existsSync(publishedSkills)) {
+    assert.equal(await readFile(join(publishedSkills, "_shared", "mcp-routing.md"), "utf8"), skillRoutingMarkdown());
+  }
 });

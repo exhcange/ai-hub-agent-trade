@@ -8,6 +8,7 @@ import { marginTools } from "./margin-tools.js";
 import { orderTools } from "./order-tools.js";
 import { subAccountTools } from "./sub-account-tools.js";
 import { truncateUnpagedListResponse, withListLimit } from "./list-limit.js";
+import { withToolMetadata } from "./tool-metadata.js";
 import type { ToolExecutionContext, ToolSpec } from "./tool-spec.js";
 
 export interface ToolListOptions {
@@ -24,6 +25,29 @@ export interface ToolCapability {
 
 const allTools = [...marketTools, ...accountTools, ...orderTools, ...marginTools, ...assetTools, ...subAccountTools];
 
+/**
+ * Gives every write preview one stable shape before it reaches CLI/MCP.
+ * Tool-specific summaries may add richer fields, but they cannot omit the
+ * confirmation state or accidentally claim a preview has already executed.
+ */
+function withStandardPreview(summary: Record<string, unknown>, prepared: PreparedAction): Record<string, unknown> {
+  return {
+    ...summary,
+    executionMode: "LIVE",
+    executed: false,
+    requiresNewUserConfirmation: true,
+    symbol: summary.symbol ?? null,
+    apiSymbol: summary.apiSymbol ?? null,
+    side: summary.side ?? null,
+    type: summary.type ?? null,
+    quantityOrAmount: summary.quantityOrAmount ?? null,
+    priceOrMarket: summary.priceOrMarket ?? { mode: "NOT_APPLICABLE" },
+    estimatedNotional: summary.estimatedNotional ?? { amount: null, status: "not_applicable" },
+    confirmationId: prepared.confirmationId,
+    expiresAt: prepared.expiresAt
+  };
+}
+
 function assertListLimitSchema(tool: ToolSpec): void {
   const limit = tool.listLimit;
   if (!limit) return;
@@ -38,7 +62,7 @@ export class ToolRegistry {
   private readonly toolsByCliPath = new Map<string, ToolSpec>();
 
   public constructor(tools: readonly ToolSpec[] = allTools) {
-    for (const tool of tools.map(withListLimit)) {
+    for (const tool of tools.map(withListLimit).map(withToolMetadata)) {
       const path = tool.cliPath.join(" ");
       if (this.toolsByName.has(tool.name) || this.toolsByCliPath.has(path)) {
         throw new AiHubError("AI_HUB_TOOL_DUPLICATE", `Duplicate tool registration: ${tool.name}.`);
@@ -74,9 +98,10 @@ export class ToolRegistry {
     if (tool.operation === "write") throw new AiHubError("AI_HUB_WRITE_CONFIRMATION_REQUIRED", `Tool "${name}" must be executed through confirmation.`);
     const validInput = tool.validate(input);
     const response = await tool.handler(validInput, context);
+    const normalized = tool.normalizeResult ? tool.normalizeResult(response, validInput) : response;
     return tool.unpagedListLimit
-      ? truncateUnpagedListResponse(response, tool.unpagedListLimit, validInput as Record<string, unknown>)
-      : response;
+      ? truncateUnpagedListResponse(normalized, tool.unpagedListLimit, validInput as Record<string, unknown>)
+      : normalized;
   }
 
   public async prepareWrite(name: string, input: unknown, context: ToolExecutionContext, confirmations: ConfirmationPreparer): Promise<PreparedAction> {
@@ -84,20 +109,24 @@ export class ToolRegistry {
     if (tool.operation !== "write" || !tool.writeSummary) throw new AiHubError("AI_HUB_TOOL_NOT_WRITE", `Tool "${name}" is not a confirmable write Tool.`);
     const validInput = tool.validate(input);
     const preflightInput = tool.preflight ? await tool.preflight(validInput, context) : validInput;
-    return await confirmations.prepare({
+    const prepared = await confirmations.prepare({
       action: tool.name,
       payload: preflightInput,
       context: confirmationContext(context),
       summary: tool.writeSummary(preflightInput)
     });
+    return { ...prepared, summary: withStandardPreview(prepared.summary, prepared) };
   }
 
   public async executeConfirmed(action: string, payload: Record<string, unknown>, context: ToolExecutionContext): Promise<unknown> {
     const tool = this.byName(action);
     if (tool.operation !== "write") throw new AiHubError("AI_HUB_TOOL_NOT_WRITE", `Tool "${action}" is not a write Tool.`);
     // The payload was validated and bound to the one-time confirmation during prepareWrite.
-    // Validating it again would re-interpret internal normalized fields and could change intent.
-    return tool.handler(payload as never, context);
+    // Do not validate it again: that could re-interpret internal normalized fields and change intent.
+    // A confirmPreflight may only reject a now-risky request; it must not alter it.
+    if (tool.confirmPreflight) await tool.confirmPreflight(payload as never, context);
+    const response = await tool.handler(payload as never, context);
+    return tool.normalizeResult ? tool.normalizeResult(response, payload as never) : response;
   }
 
   public capabilities(context: ToolExecutionContext, options: ToolListOptions = {}): ToolCapability[] {

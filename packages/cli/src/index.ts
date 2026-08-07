@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AI_HUB_RELEASE_VERSION, AiHubError, ConfigStore, configFilePath, confirmationContext, createToolExecutionContext, createToolRegistry, FileConfirmationStore, toAiHubErrorPayload, type ToolSpec } from "@ai-hub/agent-trade-core";
+import { AI_HUB_RELEASE_VERSION, AiHubError, ConfigStore, configFilePath, createToolExecutionContext, createToolRegistry, FileConfirmationStore, toAiHubErrorPayload, ToolWriteExecutor, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 function printHelp(): void {
   process.stdout.write(`AI Hub Agent Trade CLI
@@ -11,7 +11,9 @@ Usage:
   ai-hub config set --profile <name> --openapi-base-url <https-url>
   ai-hub config set-credentials --profile <name>
   ai-hub config show [--profile <name>]
+  ai-hub config path
   ai-hub config remove --profile <name>
+  ai-hub capabilities
   ai-hub confirm --confirmation-id <id> --user-confirmation <new-user-message> [--profile <name>]
   ai-hub market <ping|time|symbols|symbols-overview|symbols-list|symbols-search|symbol-info|price|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary|klines-1min-history> [options]
   ai-hub account <asset-balance|balances> [options]
@@ -40,6 +42,38 @@ function optionValue(args: string[], option: string): string | undefined {
 
 function json(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+/**
+ * Local, static CLI capability metadata. This deliberately does not create a
+ * ToolExecutionContext: `ai-hub capabilities` must work before configuration,
+ * must not contact OpenAPI, and must never inspect credential values.
+ */
+function cliCapabilities(): Record<string, unknown> {
+  const tools = createToolRegistry().list().map((tool) => ({
+    name: tool.name,
+    cliPath: tool.cliPath.join(" "),
+    module: tool.module,
+    access: tool.access,
+    operation: tool.operation,
+    riskLevel: tool.riskLevel,
+    ...(tool.openApiContract ? { openApi: tool.openApiContract } : {})
+  }));
+  const moduleCounts = tools.reduce<Record<string, number>>((counts, tool) => {
+    counts[tool.module] = (counts[tool.module] ?? 0) + 1;
+    return counts;
+  }, {});
+  return {
+    version: AI_HUB_RELEASE_VERSION,
+    configPath: configFilePath(),
+    summary: {
+      totalTools: tools.length,
+      readTools: tools.filter((tool) => tool.operation === "read").length,
+      writeTools: tools.filter((tool) => tool.operation === "write").length,
+      modules: moduleCounts
+    },
+    tools
+  };
 }
 
 async function readHidden(prompt: string): Promise<string> {
@@ -130,7 +164,7 @@ async function runTool(args: string[], profileName: string | undefined): Promise
     json(await registry.execute(tool.name, input, context));
     return;
   }
-  const prepared = await registry.prepareWrite(tool.name, input, context, new FileConfirmationStore());
+  const prepared = await new ToolWriteExecutor(registry, new FileConfirmationStore()).prepare(tool.name, input, context);
   json({
     preview: { action: prepared.action, summary: prepared.summary, requestHash: prepared.requestHash, expiresAt: prepared.expiresAt },
     confirmationId: prepared.confirmationId,
@@ -150,15 +184,7 @@ async function runConfirmation(args: string[], profileName: string | undefined):
     throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "confirm accepts only --confirmation-id and --user-confirmation, plus --profile.");
   }
   const context = await createToolExecutionContext(profileName);
-  const pending = await new FileConfirmationStore().confirm(confirmationId, userConfirmation, confirmationContext(context));
-  try {
-    json(await createToolRegistry().executeConfirmed(pending.action, pending.payload, context));
-  } catch (error) {
-    if (error instanceof AiHubError && error.code === "AI_HUB_OPENAPI_NETWORK_ERROR") {
-      throw new AiHubError("AI_HUB_WRITE_RESULT_UNKNOWN", "The request may have reached OpenAPI. Do not retry automatically; query by client order ID before taking another action.");
-    }
-    throw error;
-  }
+  json(await new ToolWriteExecutor(createToolRegistry(), new FileConfirmationStore()).confirm(confirmationId, userConfirmation, context));
 }
 
 export async function run(argv: string[]): Promise<void> {
@@ -174,6 +200,13 @@ export async function run(argv: string[]): Promise<void> {
   const commandArgs = profile ? argv.filter((value, index) => value !== "--profile" && index !== argv.indexOf("--profile") + 1) : argv;
 
   if (commandArgs[0] === "confirm") return runConfirmation(commandArgs, profile);
+  if (commandArgs[0] === "capabilities") {
+    if (commandArgs.length !== 1) {
+      throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "capabilities does not accept additional arguments.");
+    }
+    json(cliCapabilities());
+    return;
+  }
   if (commandArgs[0] !== "config") return runTool(commandArgs, profile);
 
   const action = commandArgs[1];
@@ -205,6 +238,12 @@ export async function run(argv: string[]): Promise<void> {
       json({ ...resolved, credentialConfigured: Boolean(await store.getCredentials(profile)), configPath: configFilePath() });
       return;
     }
+    case "path":
+      if (commandArgs.length !== 2) {
+        throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "config path does not accept additional arguments.");
+      }
+      json({ configPath: configFilePath() });
+      return;
     case "remove":
       if (!profile) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "config remove requires --profile.");
       await store.showProfile(profile);
@@ -212,7 +251,7 @@ export async function run(argv: string[]): Promise<void> {
       json({ removed: profile });
       return;
     default:
-      throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", "Use one of: init, set, show, remove.");
+      throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", "Use one of: init, set, show, path, remove; or run ai-hub capabilities.");
   }
 }
 

@@ -3,6 +3,7 @@ import { findAssetBalance, listAssetBalances } from "./account-balance.js";
 import { listLimitSchema, normalizedListLimit, type ListLimit } from "./list-limit.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalString, strictObject } from "./validation.js";
+import { presentTenantAsset, resolveTenantAsset } from "./symbol-rules.js";
 
 const ACCOUNT_BALANCE_LIST_LIMIT: Readonly<ListLimit> = {
   field: "limit",
@@ -10,7 +11,7 @@ const ACCOUNT_BALANCE_LIST_LIMIT: Readonly<ListLimit> = {
   maximum: 50
 };
 
-const signedReadErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_CREDENTIAL_NOT_CONFIGURED", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
+const signedReadErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_CREDENTIAL_NOT_CONFIGURED", "AI_HUB_ASSET_AMBIGUOUS", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
 
 function requiredAsset(value: Record<string, unknown>): string {
   const asset = optionalString(value, "asset")?.toUpperCase();
@@ -57,7 +58,17 @@ export const accountTools: ToolSpec[] = [
     },
     handler: async (input, context) => {
       const value = input as { asset: string };
-      return findAssetBalance(await context.api.account(requireCredentials(context)), value.asset);
+      const apiAsset = await resolveTenantAsset(context, value.asset);
+      // Use the v1 account overview for both the all-assets and one-asset
+      // views. In a mixed-cloud tenant v2 can return duplicate display codes
+      // (for example two BTC rows) rather than the physical BTC1701 code,
+      // which makes an exact single-asset lookup unsafe.
+      const balance = findAssetBalance(await context.api.accountOverview(requireCredentials(context)), apiAsset);
+      return {
+        ...balance,
+        asset: await presentTenantAsset(context, balance.asset),
+        apiAsset
+      };
     }
   },
   {
@@ -91,7 +102,16 @@ export const accountTools: ToolSpec[] = [
     },
     handler: async (input, context) => {
       const value = input as { assets?: string[]; nonZeroOnly: boolean; limit: number };
-      return listAssetBalances(await context.api.accountOverview(requireCredentials(context)), value);
+      const apiAssets = value.assets ? await Promise.all(value.assets.map((asset) => resolveTenantAsset(context, asset))) : undefined;
+      const balances = listAssetBalances(await context.api.accountOverview(requireCredentials(context)), { ...value, assets: apiAssets });
+      return {
+        ...balances,
+        balances: await Promise.all(balances.balances.map(async (balance) => ({
+          ...balance,
+          asset: await presentTenantAsset(context, balance.asset),
+          apiAsset: balance.asset
+        })))
+      };
     }
   }
 ];

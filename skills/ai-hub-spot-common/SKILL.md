@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-common
-version: "0.1.16"
+version: "0.1.17"
 description: Use this Skill when a user asks for AI Hub public spot market data, including connection status, server time, symbols, ticker data, order-book depth, recent trades, or candlesticks. Use the local ai-hub CLI, require no credentials for these commands, and route account or state-changing requests to the focused Skill.
 ---
 
@@ -11,6 +11,8 @@ Use this Skill for public spot market information. All commands in this Skill ar
 ## MCP First
 
 If AI Hub MCP Tools are available, call the matching `market_*` Tool directly. Do not read CLI references, run CLI help, or inspect configuration first. Use CLI Fast Path only when MCP is unavailable.
+
+For normal market questions, follow [../_shared/mcp-routing.md](../_shared/mcp-routing.md): use summary Tools unless raw fields are explicitly requested.
 
 ## Prerequisites
 
@@ -30,7 +32,7 @@ For a complete public-market request, run the exact CLI command immediately. Do 
 | `ai-hub market symbols-overview` | Get a small generic overview: counts and sample symbols. |
 | `ai-hub market symbols-list` | Browse a bounded page, optionally by quote asset. |
 | `ai-hub market symbols-search` | Search by a required keyword without trading-rule metadata. |
-| `ai-hub market symbol-info` | Get precision and minimum rules for one exact symbol. |
+| `ai-hub market symbol-info` | Get precision and limit/market minimum rules for one exact symbol. |
 | `ai-hub market price` | Get only the current price for one exact symbol. |
 | `ai-hub market ticker` | Get exact ticker data for an explicitly requested symbol or symbol list. |
 | `ai-hub market ticker-summary` | Get a bounded market overview, movers, and volume leaders. |
@@ -49,6 +51,8 @@ For a complete public-market request, run the exact CLI command immediately. Do 
 3. Execute the read-only command immediately.
 4. State whether the result is a bounded summary or raw market data and avoid presenting it as investment advice.
 5. Route balance, asset movement, sub-account, or order requests to the focused Skill.
+
+`symbol-info` exposes the OpenAPI-advertised `marketBuyMin` (minimum quote-asset amount for MARKET or STOP_MARKET BUY) and `marketSellMin` (minimum base-asset quantity for MARKET or STOP_MARKET SELL). A missing or zero value means the client defers that minimum check to OpenAPI.
 
 If a public endpoint returns `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Use its `reason` and `suggestedAction`; do not infer a cause from the code alone.
 

@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-order
-version: "0.1.16"
+version: "0.1.17"
 description: Use this Skill when a user asks to test, retrieve, list current or historical orders, buy, sell, place limit-style or conditional spot orders, batch-place, cancel, or batch-cancel supported AI Hub spot orders. Use the local ai-hub CLI with a configured credential profile. Every state-changing action requires an exact preview followed by a new manual user confirmation.
 ---
 
@@ -8,9 +8,13 @@ description: Use this Skill when a user asks to test, retrieve, list current or 
 
 Use this Skill only for supported spot order operations. Do not infer an order size, symbol, side, price, or order ID. For financial actions, preserve the exact values supplied by the user.
 
+The CLI and MCP resolve a display symbol such as `BTCUSDT` or `BTC/USDT` from the selected profile's symbol snapshot before every spot order read or write. A mixed-cloud tenant therefore submits its own physical OpenAPI symbol; do not add a tenant suffix manually.
+
 ## MCP First
 
 If AI Hub MCP Tools are available, call the matching read Tool or `spot_prepare_*` Tool directly. Do not read CLI references, run CLI help, or inspect configuration first. After a prepare result, stop for a new user message before `confirm_action`. Use CLI Fast Path only when MCP is unavailable.
+
+Read [../_shared/mcp-routing.md](../_shared/mcp-routing.md) for the shared MCP routing and fallback rules.
 
 ## Prerequisites
 
@@ -40,7 +44,7 @@ When a read request has its complete command parameters, run it directly. When a
 | `ai-hub spot order stop-market-sell` | Write | Place a STOP_MARKET SELL by base quantity. |
 | `ai-hub spot order cancel` | Write | Cancel one supported spot order. |
 | `ai-hub spot order batch-place` | Write | Place 1–10 orders for one symbol. |
-| `ai-hub spot order batch-cancel` | Write | Cancel 1–10 orders for one symbol. |
+| `ai-hub spot order batch-cancel` | Write | Submit cancellation requests for 1–10 orders for one symbol. |
 
 ## Read and Test Workflow
 
@@ -55,10 +59,15 @@ When a read request has its complete command parameters, run it directly. When a
 3. Use `limit` with `--type LIMIT|IOC|FOK|POST_ONLY`, `--base-quantity`, and `--price`. The server receives this value directly as `type`; do not use a `timeInForce` parameter.
 4. Use `stop-limit` with `--base-quantity`, `--price`, and `--trigger-price` for `STOP` orders.
 5. Use `stop-market-buy` with `--quote-amount` and `--trigger-price`, or `stop-market-sell` with `--base-quantity` and `--trigger-price`. Never supply a price to STOP_MARKET.
-6. Use `sell-available` only when the user explicitly asks to sell all available balance. It floors the available base balance to the configured quantity precision and displays the executable amount and remainder in the preview. For `market-sell`, never change the exact quantity supplied by the user.
-7. Run the write command once, optionally with `--prepare`. It prints an exact preview, a `confirmationId`, and `executed: false`, then exits.
-8. Stop and wait for a new explicit user message. Only then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` exactly once.
-9. Never type, pipe, generate, or infer a confirmation. Never use `--confirm`; it is intentionally rejected.
-10. Do not automatically retry an uncertain result. Query the order first.
+6. Before preview, shared Core applies the exact OpenAPI symbol rule: MARKET and STOP_MARKET BUY compare the quote amount with `marketBuyMin`; MARKET and STOP_MARKET SELL compare the base quantity with `marketSellMin`. The same rule applies to spot, margin, and batch orders. Missing or zero fields defer validation to OpenAPI; do not derive another minimum.
+7. Use `sell-available` only when the user explicitly asks to sell all available balance. It floors the available base balance to the configured quantity precision and displays the executable amount and remainder in the preview. For `market-sell`, never change the exact quantity supplied by the user.
+8. Run the write command once, optionally with `--prepare`. It prints `executionMode: LIVE`, `executed: false`, `requiresNewUserConfirmation: true`, `confirmationId`, and `expiresAt`. Every order preview identifies both `symbol` and `apiSymbol`, states `quantityOrAmount` and `priceOrMarket`, and includes `estimatedNotional`.
+9. Treat `estimatedNotional.status` literally: `DETERMINISTIC` means a limit-style quantity × price or exact market-BUY quote amount; `INDICATIVE` means a market-SELL quantity × a live ticker and is not a guaranteed fill; `UNAVAILABLE` means no amount can be shown. Do not show or estimate fees before execution.
+10. For an immediate market order, the preview captures a live ticker. At confirmation, a BUY price rise or SELL price fall greater than 5% rejects the request; prepare a new preview instead of bypassing the guard. STOP_MARKET sell remains unavailable until triggered.
+11. Stop and wait for a new explicit user message. Only then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` exactly once.
+12. Never type, pipe, generate, or infer a confirmation. Never use `--confirm`; it is intentionally rejected.
+13. Do not automatically retry an uncertain result. Query the order first.
+
+For `batch-place`, provide semantic order items only: `MARKET BUY` uses `quoteAmount`; `MARKET SELL` uses `baseQuantity`; `LIMIT`, `IOC`, `FOK`, and `POST_ONLY` use `baseQuantity` plus `price`. Each item can provide `newClientOrderId`; otherwise the CLI generates one. The Core compiles this to the OpenAPI's `batchType`, `volume`, and `client_order_id` fields only after preflight. Do not supply raw `volume` or `client_order_id` yourself.
 
 Only read [references/order-commands.md](references/order-commands.md) when Fast Path does not apply.

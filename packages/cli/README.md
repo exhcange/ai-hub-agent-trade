@@ -28,6 +28,8 @@ ai-hub config set-credentials --profile default
 
 The API key and secret key are stored as plaintext in `~/.ai-hub/config.toml`. The configuration directory and file use mode `700` and `600` respectively. `ai-hub config show` never prints the key values. State-changing operations require a preview followed by a separate confirmation command.
 
+Use `ai-hub config path` to print the local configuration file path. Use `ai-hub capabilities` to inspect this installed CLI version's supported tool names, CLI command paths, read/write classification, and OpenAPI contracts. Both commands are local-only: they do not call OpenAPI or read credential values.
+
 If the profile was created by an earlier Keychain-based build, run `ai-hub config set-credentials --profile <name>` once after upgrading. Credentials are not migrated automatically.
 
 ## Spot order units

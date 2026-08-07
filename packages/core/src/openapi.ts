@@ -80,7 +80,36 @@ function parseJsonPreservingLargeIntegers<T>(raw: string): T {
     }
     index = end;
   }
-  return JSON.parse(transformed) as T;
+  return normalizeOpenApiMonetaryValues(JSON.parse(transformed)) as T;
+}
+
+const MONETARY_FIELD_NAMES = new Set([
+  "amount", "available", "avgPrice", "balance", "baseQuantity", "borrow", "close", "dealMoney", "dealVolume",
+  "executedMoney", "executedQty", "fee", "free", "freeze", "high", "interest", "last", "locked", "low",
+  "makerFee", "normal", "open", "origQty", "price", "qty", "quantity", "quoteAmount", "stopPrice", "takerFee",
+  "triggerPrice", "vol", "volume"
+]);
+const ORDER_BOOK_FIELD_NAMES = new Set(["asks", "bids"]);
+
+/**
+ * Keeps prices, quantities, balances, and fees exact at the OpenAPI boundary.
+ * Identifier, count, status, and timestamp fields intentionally retain their
+ * original types; only documented monetary field names and depth levels change.
+ */
+function normalizeOpenApiMonetaryValues(value: unknown, fieldName?: string): unknown {
+  if (typeof value === "number") {
+    return fieldName && MONETARY_FIELD_NAMES.has(fieldName) && Number.isFinite(value) ? String(value) : value;
+  }
+  if (Array.isArray(value)) {
+    if (fieldName && ORDER_BOOK_FIELD_NAMES.has(fieldName)) {
+      return value.map((level) => Array.isArray(level)
+        ? level.map((entry, index) => index < 2 && typeof entry === "number" && Number.isFinite(entry) ? String(entry) : normalizeOpenApiMonetaryValues(entry))
+        : normalizeOpenApiMonetaryValues(level));
+    }
+    return value.map((entry) => normalizeOpenApiMonetaryValues(entry));
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, normalizeOpenApiMonetaryValues(entry, key)]));
 }
 
 function queryString(values: Record<string, QueryValue>): string {

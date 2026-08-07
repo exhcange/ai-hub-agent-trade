@@ -133,8 +133,14 @@ function quoteFromSymbol(symbol: string | null): string | null {
 /** Builds a bounded overview of the all-symbol ticker response for Agent use. */
 export function summarizeTickers(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit" | "quoteAsset">>): JsonRecord {
   const quoteAsset = options.quoteAsset.toUpperCase();
-  const rows = tickerRows(value).filter((item) => quoteFromSymbol(text(item.symbol)) === quoteAsset);
-  const bySymbol = new Map(rows.map((item) => [text(item.symbol)?.toUpperCase(), item]));
+  const sourceRows = tickerRows(value).filter((item) => quoteFromSymbol(text(item.symbol)) === quoteAsset);
+  // Mixed-cloud OpenAPI responses can contain the same display symbol twice
+  // (for example legacy BTC/USDT and tenant BTC1701/USDT1701). The service
+  // emits the tenant-effective item last; collapse duplicate display values
+  // before producing watchlists and leaderboards so an Agent never receives
+  // conflicting prices for one user-facing pair.
+  const bySymbol = new Map(sourceRows.map((item) => [text(item.symbol)?.toUpperCase(), item]));
+  const rows = [...bySymbol.values()];
   const watchlistSymbols = ["BTC", "ETH", "SOL", "XRP", "DOGE", "BNB", "ADA"];
   const watchlist = watchlistSymbols
     .map((asset) => bySymbol.get(`${asset}/${quoteAsset}`))
@@ -176,6 +182,8 @@ interface ParsedSymbol {
   limitVolumeMin: string | null;
   limitPriceMin: string | null;
   limitAmountMin: string | null;
+  marketBuyMin: string | null;
+  marketSellMin: string | null;
 }
 
 function normalizedSymbol(value: string): string {
@@ -197,9 +205,37 @@ function parsedSymbolRows(value: unknown): ParsedSymbol[] {
       quantityPrecision: item.quantityPrecision ?? null,
       limitVolumeMin: text(item.limitVolumeMin),
       limitPriceMin: text(item.limitPriceMin),
-      limitAmountMin: text(item.limitAmountMin)
+      limitAmountMin: text(item.limitAmountMin),
+      marketBuyMin: text(item.marketBuyMin),
+      marketSellMin: text(item.marketSellMin)
     };
   }).filter((item) => Boolean(item.symbol));
+}
+
+/**
+ * Returns the user-facing symbol set. A hybrid-cloud symbols response may
+ * include both an ordinary global record (`btcusdt`) and the tenant's real
+ * record (`btc1701usdt1701`) with the same `SymbolName` (`BTC/USDT`).
+ *
+ * List, overview, and search are discovery APIs, so presenting both is
+ * confusing and can make an Agent choose the wrong instrument. Prefer a
+ * record whose physical API symbol differs from its display symbol. If two
+ * equally-preferred records share a display name, retain both rather than
+ * guessing which tenant instrument is intended.
+ */
+function preferredDisplaySymbolRows(rows: readonly ParsedSymbol[]): ParsedSymbol[] {
+  const groups = new Map<string, ParsedSymbol[]>();
+  for (const row of rows) {
+    const key = normalizedSymbol(row.symbol);
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  const result: ParsedSymbol[] = [];
+  for (const group of groups.values()) {
+    const preference = (row: ParsedSymbol): number => row.apiSymbol && normalizedSymbol(row.apiSymbol) !== normalizedSymbol(row.symbol) ? 1 : 0;
+    const highest = Math.max(...group.map(preference));
+    result.push(...group.filter((row) => preference(row) === highest));
+  }
+  return result;
 }
 
 function quoteAssetCounts(rows: readonly ParsedSymbol[]): JsonRecord[] {
@@ -229,7 +265,9 @@ function fullSymbolItem(item: ParsedSymbol): JsonRecord {
     quantityPrecision: item.quantityPrecision,
     limitVolumeMin: item.limitVolumeMin,
     limitPriceMin: item.limitPriceMin,
-    limitAmountMin: item.limitAmountMin
+    limitAmountMin: item.limitAmountMin,
+    marketBuyMin: item.marketBuyMin,
+    marketSellMin: item.marketSellMin
   };
 }
 
@@ -247,7 +285,7 @@ function sortSymbolMatches(rows: readonly ParsedSymbol[], query?: string): Parse
 
 /** Returns the small default response for a generic request to browse symbols. */
 export function summarizeSymbolOverview(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit">>): JsonRecord {
-  const rows = parsedSymbolRows(value);
+  const rows = preferredDisplaySymbolRows(parsedSymbolRows(value));
   return {
     totalSymbols: rows.length,
     quoteAssetCounts: quoteAssetCounts(rows),
@@ -257,7 +295,7 @@ export function summarizeSymbolOverview(value: unknown, options: Required<Pick<M
 
 /** Lists a bounded page of symbols without order-rule metadata. */
 export function listSymbols(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit">> & { offset: number; quoteAsset?: string }): JsonRecord {
-  const allRows = parsedSymbolRows(value);
+  const allRows = preferredDisplaySymbolRows(parsedSymbolRows(value));
   const quoteAsset = options.quoteAsset?.trim().toUpperCase();
   const matches = sortSymbolMatches(allRows.filter((item) => !quoteAsset || item.quoteAsset?.toUpperCase() === quoteAsset));
   const items = matches.slice(options.offset, options.offset + options.limit).map(basicSymbolItem);
@@ -289,7 +327,7 @@ export function listFullSymbols(value: unknown, options: Required<Pick<MarketSum
 
 /** Searches symbols by a required keyword without exposing their order-rule metadata. */
 export function searchSymbols(value: unknown, options: Required<Pick<MarketSummaryOptions, "limit" | "query">> & Pick<MarketSummaryOptions, "quoteAsset">): JsonRecord {
-  const allRows = parsedSymbolRows(value);
+  const allRows = preferredDisplaySymbolRows(parsedSymbolRows(value));
   const query = options.query.trim().toUpperCase();
   const quoteAsset = options.quoteAsset?.trim().toUpperCase();
   const matches = allRows.filter((item) => {

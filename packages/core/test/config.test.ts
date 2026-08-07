@@ -25,6 +25,11 @@ test("stores plaintext credentials in the selected TOML profile", async () => {
   assert.match(text, /api_key = "test-api-key"/);
   assert.match(text, /secret_key = "test-secret-key"/);
   assert.equal(file.mode & 0o777, 0o600);
+
+  const snapshot = await store.resolveProfileWithCredentials("tenant-a");
+  assert.equal(snapshot.profile.name, "tenant-a");
+  assert.equal(snapshot.credentials?.apiKey, "test-api-key");
+  assert.equal(snapshot.credentials?.secretKey, "test-secret-key");
 });
 
 test("rejects a local OpenAPI endpoint", async () => {

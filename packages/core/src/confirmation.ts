@@ -92,8 +92,19 @@ export interface ConfirmationPreparer {
   prepare(input: PrepareActionInput): PreparedAction | Promise<PreparedAction>;
 }
 
+export interface ConfirmedAction {
+  action: string;
+  payload: Record<string, unknown>;
+  requestHash: string;
+}
+
+/** Shared one-time confirmation contract used by both MCP memory and CLI files. */
+export interface ConfirmationStore extends ConfirmationPreparer {
+  confirm(confirmationId: string, userConfirmation: string, context: ExecutionContext): ConfirmedAction | Promise<ConfirmedAction>;
+}
+
 /** In-memory, one-time authorization for an MCP state-changing request. */
-export class ConfirmationService {
+export class ConfirmationService implements ConfirmationStore {
   private readonly actions = new Map<string, MemoryPendingAction>();
 
   public constructor(private readonly ttlMs = 5 * 60 * 1000, private readonly now = () => Date.now()) {}
@@ -104,7 +115,7 @@ export class ConfirmationService {
     return preparedAction(pending);
   }
 
-  public confirm(confirmationId: string, userConfirmation: string, context: ExecutionContext): { action: string; payload: Record<string, unknown>; requestHash: string } {
+  public confirm(confirmationId: string, userConfirmation: string, context: ExecutionContext): ConfirmedAction {
     if (typeof userConfirmation !== "string" || !userConfirmation.trim()) {
       throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "A non-empty new explicit user confirmation message is required before a state-changing request can execute.");
     }
@@ -124,7 +135,7 @@ const CONFIRMATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f
  * never credentials, and are atomically renamed before validation so a token
  * can never execute twice across separate CLI processes.
  */
-export class FileConfirmationStore implements ConfirmationPreparer {
+export class FileConfirmationStore implements ConfirmationStore {
   public constructor(
     private readonly directory = join(homedir(), ".ai-hub", "pending-actions"),
     private readonly ttlMs = 5 * 60 * 1000,
@@ -149,7 +160,7 @@ export class FileConfirmationStore implements ConfirmationPreparer {
     return preparedAction(pending);
   }
 
-  public async confirm(confirmationId: string, userConfirmation: string, context: ExecutionContext): Promise<{ action: string; payload: Record<string, unknown>; requestHash: string }> {
+  public async confirm(confirmationId: string, userConfirmation: string, context: ExecutionContext): Promise<ConfirmedAction> {
     if (typeof userConfirmation !== "string" || !userConfirmation.trim()) {
       throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "A non-empty new explicit user confirmation message is required before a state-changing request can execute.");
     }

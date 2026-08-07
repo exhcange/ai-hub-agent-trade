@@ -89,3 +89,38 @@ test("OpenAPI timing observer receives only elapsed milliseconds", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("normalizes documented monetary response fields without changing IDs, counts, or timestamps", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    code: "0",
+    data: {
+      orderId: 123,
+      count: 2,
+      time: 1700000000000,
+      price: 60000,
+      origQty: 0.0001,
+      executedQty: 0,
+      bids: [[59999.5, 0.25]],
+      asks: [[60000.5, 0.5]]
+    }
+  }), { status: 200 });
+  try {
+    const result = await new AiHubSpotApi("https://api.example.com").getOrder(
+      { symbol: "BTCUSDT", orderId: "123" },
+      { apiKey: "test-key", secretKey: "test-secret", credentialVersion: "v1" }
+    ) as { data: Record<string, unknown> };
+    assert.deepEqual(result.data, {
+      orderId: 123,
+      count: 2,
+      time: 1700000000000,
+      price: "60000",
+      origQty: "0.0001",
+      executedQty: "0",
+      bids: [["59999.5", "0.25"]],
+      asks: [["60000.5", "0.5"]]
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

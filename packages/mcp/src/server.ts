@@ -1,6 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
-import { AI_HUB_RELEASE_VERSION, AiHubError, createToolExecutionContext, createToolRegistry, DEFAULT_MCP_RESPONSE_MODE, DEFAULT_MCP_TOOLSET, selectMcpToolset, toAiHubErrorPayload, ToolWriteExecutor, type McpResponseMode, type McpToolset, type ToolSpec } from "@ai-hub/agent-trade-core";
+import { AI_HUB_RELEASE_VERSION, AiHubError, createToolExecutionContext, createToolRegistry, DEFAULT_MCP_RESPONSE_MODE, DEFAULT_MCP_TOOLSET, mcpRoutingInstructions, selectMcpToolset, toAiHubErrorPayload, ToolWriteExecutor, type McpResponseMode, type McpToolset, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 const CONFIRM_ACTION_TOOL = "confirm_action";
 const SEMANTIC_INPUT_FIELDS = new Set(["quoteAmount", "baseQuantity", "price", "triggerPrice", "side", "type", "orders", "amount", "address", "fromAccountType", "toAccountType", "isolated", "nonZeroOnly"]);
@@ -112,8 +112,11 @@ function compactDescription(description: string): string {
     .replace(/\bconfigured tenant OpenAPI\b/gi, "OpenAPI")
     .replace(/\s+/g, " ")
     .trim();
-  if (normalized.length <= 120) return normalized;
-  return `${normalized.slice(0, 117).trimEnd()}...`;
+  // Keep each listing short: tools/list is injected into the Agent context on
+  // every MCP session, while the server-level instructions carry the shared
+  // routing rules.
+  if (normalized.length <= 93) return normalized;
+  return `${normalized.slice(0, 90).trimEnd()}...`;
 }
 
 function compactInputSchema(tool: ToolSpec): Tool["inputSchema"] {
@@ -138,10 +141,11 @@ function writeDescription(tool: ToolSpec): string {
 }
 
 function toMcpTool(tool: ToolSpec): Tool {
+  const routing = tool.agentRouting?.selectionHint;
   return {
     name: tool.name,
     title: tool.title,
-    description: compactDescription(tool.description),
+    description: compactDescription(routing ? `${tool.description} ${routing}` : tool.description),
     inputSchema: compactInputSchema(tool),
     ...(outputSchemaFor(tool) ? { outputSchema: outputSchemaFor(tool) } : {}),
     annotations: {
@@ -177,7 +181,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
     { name: "ai-hub-agent-trade", version: AI_HUB_RELEASE_VERSION },
     {
       capabilities: { tools: {} },
-      instructions: "Use structuredContent for reads. For a balance overview call account_list_balances with {}. For one current price use market_get_last_price. Prepare tools only preview and require a new user confirmation before confirm_action."
+      instructions: `Use structuredContent for reads. ${mcpRoutingInstructions()} Prepare tools only preview and require a new user confirmation before confirm_action.`
     }
   );
 

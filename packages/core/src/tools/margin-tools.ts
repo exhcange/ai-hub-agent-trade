@@ -4,7 +4,7 @@ import type { ToolSpec } from "./tool-spec.js";
 import { optionalBoolean, optionalClientOrderId, optionalPositiveInteger, positiveDecimal, requiredEnum, signed, signedReadErrors, writeErrors } from "./tool-utils.js";
 import { STANDARD_LIST_LIMIT, listLimitSchema, normalizedListLimit } from "./list-limit.js";
 import { optionalString, requiredString, strictObject } from "./validation.js";
-import { preflightSymbolOrder } from "./symbol-rules.js";
+import { getSymbolRule, multiplyDecimal, preflightSymbolOrder, resolveTenantSymbol } from "./symbol-rules.js";
 
 const MARGIN_ORDER_TYPES = ["LIMIT", "MARKET", "IOC", "FOK", "POST_ONLY", "STOP", "STOP_MARKET"] as const satisfies readonly SpotOrderType[];
 const MARGIN_LIMIT_ORDER_TYPES = ["LIMIT", "IOC", "FOK", "POST_ONLY"] as const;
@@ -23,6 +23,21 @@ interface SemanticMarginOrder {
   intent: MarginOrderIntent;
   quoteAmount?: string;
   baseQuantity?: string;
+  requestedSymbol?: string;
+  displaySymbol?: string;
+  baseAsset?: string;
+  quoteAsset?: string;
+  displayBaseAsset?: string;
+  displayQuoteAsset?: string;
+}
+
+interface PreparedMarginCancel extends Record<string, unknown> {
+  symbol: string;
+  requestedSymbol?: string;
+  displaySymbol?: string;
+  orderId: string;
+  newClientOrderId?: string;
+  isolated?: boolean;
 }
 
 function validateMarginSemanticOrder(input: unknown): SemanticMarginOrder {
@@ -128,21 +143,63 @@ function marginOrderSummary(order: SemanticMarginOrder): Record<string, unknown>
   }[order.intent];
   return {
     action,
-    symbol: order.symbol,
+    symbol: order.displaySymbol ?? order.requestedSymbol ?? order.symbol,
+    apiSymbol: order.symbol,
     side: order.side,
     type: order.type,
-    ...(order.quoteAmount ? { quoteAmount: order.quoteAmount, amountMeaning: "exact quote-asset amount to spend" } : {}),
-    ...(order.baseQuantity ? { baseQuantity: order.baseQuantity, amountMeaning: "exact base-asset quantity" } : {}),
-    ...(order.price ? { price: order.price } : {}),
-    ...(order.triggerPrice ? { triggerPrice: order.triggerPrice } : {}),
+    quantityOrAmount: order.quoteAmount
+      ? { value: order.quoteAmount, asset: order.displayQuoteAsset ?? order.quoteAsset ?? null, apiAsset: order.quoteAsset ?? null, meaning: "exact quote-asset amount to spend" }
+      : { value: order.baseQuantity ?? order.volume, asset: order.displayBaseAsset ?? order.baseAsset ?? null, apiAsset: order.baseAsset ?? null, meaning: "exact base-asset quantity" },
+    priceOrMarket: order.price
+      ? { mode: "LIMIT", price: order.price, ...(order.triggerPrice ? { triggerPrice: order.triggerPrice } : {}) }
+      : { mode: "MARKET", ...(order.triggerPrice ? { triggerPrice: order.triggerPrice } : {}) },
+    estimatedNotional: order.price && order.baseQuantity
+      ? { amount: multiplyDecimal(order.baseQuantity, order.price), asset: order.displayQuoteAsset ?? order.quoteAsset ?? null, apiAsset: order.quoteAsset ?? null, status: "estimated" }
+      : order.quoteAmount
+        ? { amount: order.quoteAmount, asset: order.displayQuoteAsset ?? order.quoteAsset ?? null, apiAsset: order.quoteAsset ?? null, status: "estimated" }
+        : { amount: null, asset: order.displayQuoteAsset ?? order.quoteAsset ?? null, apiAsset: order.quoteAsset ?? null, status: "market_price_unknown" },
     isolated: order.isolated ?? false,
     newClientOrderId: order.newClientOrderId
   };
 }
 
 async function preflightMarginOrder(order: SemanticMarginOrder, context: Parameters<NonNullable<ToolSpec<SemanticMarginOrder>["preflight"]>>[1]): Promise<SemanticMarginOrder> {
-  await preflightSymbolOrder(context, order);
-  return order;
+  const rule = await preflightSymbolOrder(context, order);
+  return {
+    ...order,
+    symbol: rule.symbol,
+    requestedSymbol: order.symbol,
+    displaySymbol: rule.displaySymbol ?? order.symbol,
+    baseAsset: rule.baseAsset,
+    quoteAsset: rule.quoteAsset,
+    displayBaseAsset: rule.displayBaseAsset,
+    displayQuoteAsset: rule.displayQuoteAsset
+  };
+}
+
+async function resolveMarginSymbol(context: Parameters<ToolSpec["handler"]>[1], symbol: string): Promise<string> {
+  return resolveTenantSymbol(context, symbol);
+}
+
+async function preflightMarginCancel(input: Record<string, unknown>, context: Parameters<NonNullable<ToolSpec["preflight"]>>[1]): Promise<PreparedMarginCancel> {
+  const requestedSymbol = String(input.symbol);
+  const rule = await getSymbolRule(context, requestedSymbol);
+  return {
+    ...input,
+    symbol: rule.symbol,
+    requestedSymbol,
+    displaySymbol: rule.displaySymbol ?? requestedSymbol,
+    orderId: String(input.orderId)
+  };
+}
+
+function toMarginCancelOpenApi(input: PreparedMarginCancel): Record<string, unknown> {
+  return {
+    symbol: input.symbol,
+    orderId: input.orderId,
+    ...(input.newClientOrderId ? { newClientOrderId: input.newClientOrderId } : {}),
+    ...(input.isolated !== undefined ? { isolated: input.isolated } : {})
+  };
 }
 
 function validateMarginOrderLookup(input: unknown): Record<string, unknown> {
@@ -166,7 +223,10 @@ export const marginTools: ToolSpec<any>[] = [
     module: "spot-margin", access: "signed", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, orderId: { type: "string" }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "orderId"], additionalProperties: false }, errorCodes: signedReadErrors,
     validate: validateMarginOrderLookup,
-    handler: (input, context) => context.api.signedGet("/sapi/v2/margin/order", input as Record<string, string | boolean | undefined>, signed(context))
+    handler: async (input, context) => {
+      const value = input as Record<string, string | boolean | undefined>;
+      return context.api.signedGet("/sapi/v2/margin/order", { ...value, symbol: await resolveMarginSymbol(context, String(value.symbol)) }, signed(context));
+    }
   },
   {
     name: "margin_get_open_orders", title: "Get Open Margin Orders", description: "Get signed open margin orders from the v2 margin API.", cliPath: ["margin", "order", "open"],
@@ -174,7 +234,10 @@ export const marginTools: ToolSpec<any>[] = [
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: listLimitSchema(STANDARD_LIST_LIMIT), isolated: { type: "boolean" } }, additionalProperties: false }, errorCodes: signedReadErrors,
     listLimit: STANDARD_LIST_LIMIT,
     validate: validateMarginOpenOrders,
-    handler: (input, context) => context.api.signedGet("/sapi/v2/margin/openOrders", input as Record<string, string | number | boolean | undefined>, signed(context))
+    handler: async (input, context) => {
+      const value = input as Record<string, string | number | boolean | undefined>;
+      return context.api.signedGet("/sapi/v2/margin/openOrders", { ...value, ...(value.symbol ? { symbol: await resolveMarginSymbol(context, String(value.symbol)) } : {}) }, signed(context));
+    }
   },
   {
     name: "margin_get_fills", title: "Get Margin Fills", description: "Get signed margin trade history from the v2 margin API.", cliPath: ["margin", "order", "fills"],
@@ -182,7 +245,10 @@ export const marginTools: ToolSpec<any>[] = [
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: listLimitSchema(STANDARD_LIST_LIMIT), fromId: { type: "string" } }, required: ["symbol"], additionalProperties: false }, errorCodes: signedReadErrors,
     listLimit: STANDARD_LIST_LIMIT,
     validate: validateMarginTrades,
-    handler: (input, context) => context.api.signedGet("/sapi/v2/margin/myTrades", input as Record<string, string | number | undefined>, signed(context))
+    handler: async (input, context) => {
+      const value = input as Record<string, string | number | undefined>;
+      return context.api.signedGet("/sapi/v2/margin/myTrades", { ...value, symbol: await resolveMarginSymbol(context, String(value.symbol)) }, signed(context));
+    }
   },
   {
     name: "margin_market_buy", title: "Margin Market Buy by Quote Amount", description: "Spend an exact quote-asset amount for an isolated or cross-margin market buy. For ETHUSDT, quoteAmount is USDT. A market buy cannot guarantee an exact base-asset quantity.", cliPath: ["margin", "order", "market-buy"],
@@ -243,7 +309,11 @@ export const marginTools: ToolSpec<any>[] = [
     module: "spot-margin", access: "signed", operation: "write", riskLevel: "high",
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, orderId: { type: "string" }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "orderId"], additionalProperties: false }, errorCodes: writeErrors,
     validate: validateMarginOrderLookup,
-    handler: (input, context) => context.api.signedPost("/sapi/v2/margin/cancel", input as Record<string, unknown>, signed(context)),
-    writeSummary: (input) => { const value = input as Record<string, unknown>; return { action: "margin_cancel_order", symbol: value.symbol, orderId: value.orderId, isolated: value.isolated ?? false, newClientOrderId: value.newClientOrderId ?? null }; }
+    preflight: preflightMarginCancel,
+    handler: (input, context) => context.api.signedPost("/sapi/v2/margin/cancel", toMarginCancelOpenApi(input as PreparedMarginCancel), signed(context)),
+    writeSummary: (input) => {
+      const value = input as PreparedMarginCancel;
+      return { action: "margin_cancel_order", symbol: value.displaySymbol ?? value.requestedSymbol ?? value.symbol, apiSymbol: value.symbol, orderId: value.orderId, isolated: value.isolated ?? false, newClientOrderId: value.newClientOrderId ?? null };
+    }
   }
 ];

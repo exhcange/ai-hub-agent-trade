@@ -27,9 +27,21 @@ test("ticker summary returns only the requested quote asset and bounded leaderbo
   assert.equal((summary.topByQuoteVolume as unknown[]).length, 0);
 });
 
+test("ticker summary removes conflicting duplicate display symbols before ranking", () => {
+  const summary = summarizeTickers([
+    { symbol: "BTC/USDT", last: "59000", rose: "-0.1", amount: "1", vol: "1", high: "60000", low: "58000", time: 1 },
+    { symbol: "BTC/USDT", last: "153001", rose: "0.1", amount: "2", vol: "2", high: "154000", low: "150000", time: 2 },
+    { symbol: "ETH/USDT", last: "3000", rose: "0", amount: "3", vol: "3", high: "3100", low: "2900", time: 2 }
+  ], { quoteAsset: "USDT", limit: 10 });
+  assert.equal(summary.totalSymbols, 2);
+  assert.equal((summary.watchlist as Array<{ symbol: string; last: string }>).find((item) => item.symbol === "BTC/USDT")?.last, "153001");
+  assert.equal((summary.topGainers as Array<{ symbol: string; last: string }>).find((item) => item.symbol === "BTC/USDT")?.last, "153001");
+  assert.equal((summary.topLosers as Array<{ symbol: string; last: string }>).find((item) => item.symbol === "BTC/USDT")?.last, "153001");
+});
+
 test("symbol browse, search, and exact-info responses are intentionally separate and bounded", () => {
   const source = { symbols: [
-    { symbol: "btcusdt", SymbolName: "BTC/USDT", baseAsset: "BTC", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 5, limitVolumeMin: "0.00001", limitPriceMin: "0.01", limitAmountMin: "0" },
+    { symbol: "btcusdt", SymbolName: "BTC/USDT", baseAsset: "BTC", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 5, limitVolumeMin: "0.00001", limitPriceMin: "0.01", limitAmountMin: "0", marketBuyMin: "10", marketSellMin: "0.0001" },
     { symbol: "ethusdc", SymbolName: "ETH/USDC", baseAsset: "ETH", quoteAsset: "USDC", pricePrecision: 2, quantityPrecision: 4, limitVolumeMin: "0.001", limitPriceMin: "0.01", limitAmountMin: "0" },
     { symbol: "ethusdt", SymbolName: "ETH/USDT", baseAsset: "ETH", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 4, limitVolumeMin: "0.001", limitPriceMin: "0.01", limitAmountMin: "0" }
   ] };
@@ -49,7 +61,38 @@ test("symbol browse, search, and exact-info responses are intentionally separate
   assert.equal("pricePrecision" in ((symbols.items as Record<string, unknown>[])[0] ?? {}), false);
 
   assert.deepEqual(getSymbolInfo(source, "BTCUSDT"), {
-    symbol: "BTC/USDT", apiSymbol: "btcusdt", baseAsset: "BTC", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 5, limitVolumeMin: "0.00001", limitPriceMin: "0.01", limitAmountMin: "0"
+    symbol: "BTC/USDT", apiSymbol: "btcusdt", baseAsset: "BTC", quoteAsset: "USDT", pricePrecision: 2, quantityPrecision: 5, limitVolumeMin: "0.00001", limitPriceMin: "0.01", limitAmountMin: "0", marketBuyMin: "10", marketSellMin: "0.0001"
+  });
+});
+
+test("symbol discovery prefers a hybrid tenant record over a colliding global display pair", () => {
+  const source = { symbols: [
+    { symbol: "btcusdt", SymbolName: "BTC/USDT", baseAsset: "BTC", quoteAsset: "USDT", pricePrecision: 1, quantityPrecision: 3 },
+    { symbol: "btc1701usdt1701", SymbolName: "BTC/USDT", baseAsset: "BTC1701", quoteAsset: "USDT1701", baseAssetName: "BTC", quoteAssetName: "USDT", pricePrecision: 2, quantityPrecision: 8 },
+    { symbol: "eth1701usdt1701", SymbolName: "ETH/USDT", baseAsset: "ETH1701", quoteAsset: "USDT1701", baseAssetName: "ETH", quoteAssetName: "USDT" }
+  ] };
+  assert.deepEqual(summarizeSymbolOverview(source, { limit: 20 }), {
+    totalSymbols: 2,
+    quoteAssetCounts: [{ asset: "USDT", count: 2 }],
+    sampleSymbols: ["BTC/USDT", "ETH/USDT"]
+  });
+  assert.deepEqual(listSymbols(source, { offset: 0, limit: 20 }), {
+    totalSymbols: 2,
+    matchedSymbols: 2,
+    quoteAsset: null,
+    offset: 0,
+    limit: 20,
+    nextOffset: null,
+    items: [
+      { symbol: "BTC/USDT", apiSymbol: "btc1701usdt1701", baseAsset: "BTC", quoteAsset: "USDT" },
+      { symbol: "ETH/USDT", apiSymbol: "eth1701usdt1701", baseAsset: "ETH", quoteAsset: "USDT" }
+    ]
+  });
+  assert.deepEqual(searchSymbols(source, { query: "BTC", limit: 20 }), {
+    matchedSymbols: 1,
+    query: "BTC",
+    quoteAsset: null,
+    items: [{ symbol: "BTC/USDT", apiSymbol: "btc1701usdt1701", baseAsset: "BTC", quoteAsset: "USDT" }]
   });
 });
 

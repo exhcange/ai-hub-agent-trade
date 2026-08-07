@@ -30,4 +30,6 @@ ai-hub sub-account root-transfer --sub-uid 10001 --coin-symbol USDT --amount 10 
 
 For `set-trading-status`, `type` is one of `lever`, `etf`, or `deposit`; `status` is `0` or `1`. For `api-key set-ip`, `status` is `1` or `2`; status `2` additionally requires `--ip-address`. `create` accepts a value of at most five characters for `--sub-user-email`.
 
+For `internal-transfer` and `internal-transfer-history`, Spot is implicit and `--account-type` must select the other account: `2` isolated margin, `3` cross margin, `4` C2C, or `5` derivatives. Do not pass `--account-type 1`. Use `--type 1` for Spot to the selected account and `--type 2` for the selected account to Spot.
+
 The unpaged sub-account, API-key, and asset-list responses are capped to 50 entries. If capped, the response explicitly marks that no continuation parameter is available. All write commands print a preview and exit before execution. After a new explicit user message, run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once. Do not type, pipe, or infer the confirmation.

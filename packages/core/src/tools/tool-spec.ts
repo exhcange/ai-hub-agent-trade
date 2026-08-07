@@ -7,6 +7,21 @@ export type ToolOperation = "read" | "write";
 export type ToolRiskLevel = "low" | "medium" | "high";
 export type ToolAccess = "public" | "signed";
 
+/** Stable OpenAPI identity used for generated capability documentation and contract tests. */
+export interface OpenApiContract {
+  method: "GET" | "POST";
+  path: string;
+  authentication: ToolAccess;
+}
+
+/** Concise, model-facing routing metadata. It never parses user intent at runtime. */
+export interface AgentRouting {
+  /** Normal user-facing choice, or an explicit raw/advanced alternative. */
+  preference: "default" | "advanced";
+  /** Short English selection hint used in MCP metadata and generated Skill references. */
+  selectionHint: string;
+}
+
 export interface JsonSchema {
   [key: string]: unknown;
   type: "object";
@@ -30,6 +45,8 @@ export interface ToolSpec<Input = Record<string, unknown>> {
   access: ToolAccess;
   operation: ToolOperation;
   riskLevel: ToolRiskLevel;
+  openApiContract?: Readonly<OpenApiContract>;
+  agentRouting?: Readonly<AgentRouting>;
   inputSchema: JsonSchema;
   errorCodes: readonly string[];
   /** Shared CLI/MCP list pagination rule, when a Tool exposes a bounded list. */
@@ -39,6 +56,18 @@ export interface ToolSpec<Input = Record<string, unknown>> {
   validate(input: unknown): Input;
   /** Optional asynchronous preflight performed before a write is presented for confirmation. */
   preflight?(input: Input, context: ToolExecutionContext): Promise<Input>;
+  /**
+   * Optional write-only safety check performed after user confirmation and
+   * immediately before the request is sent. It must never mutate the order
+   * payload or silently alter the user's confirmed intent.
+   */
+  confirmPreflight?(input: Input, context: ToolExecutionContext): Promise<void>;
   handler(input: Input, context: ToolExecutionContext): Promise<unknown>;
+  /**
+   * Optional Core-level response normalization shared by CLI and MCP.
+   * It may clarify upstream semantics, but must preserve compatibility fields
+   * when an existing OpenAPI response is already publicly exposed.
+   */
+  normalizeResult?(result: unknown, input: Input): unknown;
   writeSummary?(input: Input): Record<string, unknown>;
 }

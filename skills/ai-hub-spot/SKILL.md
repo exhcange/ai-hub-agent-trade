@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot
-version: "0.1.16"
+version: "0.1.17"
 description: Use this Skill for supported AI Hub spot-market, account, order, wallet, or sub-account requests. Prefer the matching AI Hub MCP Tool; use the local ai-hub CLI only when MCP is unavailable. Enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for unsupported products or capabilities.
 ---
 
@@ -11,6 +11,8 @@ Route supported spot-account requests to the matching MCP Tool when AI Hub MCP i
 ## MCP First
 
 When AI Hub MCP Tools are available, call the exact matching MCP Tool immediately. Do not load a focused Skill, CLI reference, `ai-hub --help`, or `config show` first. For writes, call only the matching `prepare_*` Tool, then stop for a new user message before `confirm_action`.
+
+Read [../_shared/mcp-routing.md](../_shared/mcp-routing.md) for the shared direct MCP selection rules.
 
 When MCP is unavailable, use the focused CLI command through its Fast Path. Load a reference only for setup, missing or ambiguous parameters, or an API error.
 

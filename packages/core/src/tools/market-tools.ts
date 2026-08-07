@@ -1,13 +1,13 @@
 import { AiHubError } from "../errors.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalInteger, optionalString, requiredString, strictObject } from "./validation.js";
-import { getSymbolInfo, listFullSymbols, listSymbols, searchSymbols, summarizeDepth, summarizeKlines, summarizeLastPrice, summarizeSymbolOverview, summarizeTickers, summarizeTrades } from "./market-summaries.js";
-import { getCachedSymbols } from "./symbol-rules.js";
+import { listFullSymbols, listSymbols, searchSymbols, summarizeDepth, summarizeKlines, summarizeLastPrice, summarizeSymbolOverview, summarizeTickers, summarizeTrades } from "./market-summaries.js";
+import { getCachedSymbols, getSymbolRule, resolveTenantSymbol } from "./symbol-rules.js";
 import { STANDARD_LIST_LIMIT, listLimitSchema, normalizedListLimit } from "./list-limit.js";
 import { getCachedTickerSummarySource } from "./ticker-summary-cache.js";
 
 const readErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
-const symbolReadErrors = [...readErrors, "AI_HUB_SYMBOL_NOT_FOUND"] as const;
+const symbolReadErrors = [...readErrors, "AI_HUB_SYMBOL_NOT_FOUND", "AI_HUB_SYMBOL_AMBIGUOUS"] as const;
 
 /**
  * The exact values consumed by the OpenAPI kline Redis keys. Do not send
@@ -188,7 +188,22 @@ export const marketTools: ToolSpec[] = [
       const value = strictObject(input, ["symbol"]);
       return { symbol: requiredString(value, "symbol") };
     },
-    handler: async (input, context) => getSymbolInfo(await getCachedSymbols(context), (input as { symbol: string }).symbol)
+    handler: async (input, context) => {
+      const rule = await getSymbolRule(context, (input as { symbol: string }).symbol);
+      return {
+        symbol: rule.displaySymbol ?? rule.symbol,
+        apiSymbol: rule.symbol,
+        baseAsset: rule.displayBaseAsset ?? rule.baseAsset ?? null,
+        quoteAsset: rule.displayQuoteAsset ?? rule.quoteAsset ?? null,
+        pricePrecision: rule.pricePrecision ?? null,
+        quantityPrecision: rule.quantityPrecision ?? null,
+        limitVolumeMin: rule.limitVolumeMin ?? null,
+        limitPriceMin: rule.limitPriceMin ?? null,
+        limitAmountMin: rule.limitAmountMin ?? null,
+        marketBuyMin: rule.marketBuyMin ?? null,
+        marketSellMin: rule.marketSellMin ?? null
+      };
+    }
   },
   {
     name: "market_get_last_price",
@@ -203,8 +218,9 @@ export const marketTools: ToolSpec[] = [
       return { symbol: requiredString(value, "symbol") };
     },
     handler: async (input, context) => {
-      const symbol = (input as { symbol: string }).symbol;
-      return summarizeLastPrice(await context.api.ticker({ symbol }), symbol);
+      const requestedSymbol = (input as { symbol: string }).symbol;
+      const apiSymbol = await resolveTenantSymbol(context, requestedSymbol);
+      return { ...(await summarizeLastPrice(await context.api.ticker({ symbol: apiSymbol }), requestedSymbol)), apiSymbol };
     }
   },
   {
@@ -229,7 +245,13 @@ export const marketTools: ToolSpec[] = [
       if (symbols && symbols.split(",").map((item) => item.trim()).filter(Boolean).length > STANDARD_LIST_LIMIT.maximum) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `symbols supports at most ${STANDARD_LIST_LIMIT.maximum} explicit symbols.`);
       return { symbol, symbols, timeZone: optionalString(value, "timeZone") };
     },
-    handler: (input, context) => context.api.ticker(input as { symbol?: string; symbols?: string; timeZone?: string })
+    handler: async (input, context) => {
+      const value = input as { symbol?: string; symbols?: string; timeZone?: string };
+      const symbols = value.symbols
+        ? (await Promise.all(value.symbols.split(",").map((symbol) => resolveTenantSymbol(context, symbol.trim())))).join(",")
+        : undefined;
+      return context.api.ticker({ ...value, ...(value.symbol ? { symbol: await resolveTenantSymbol(context, value.symbol) } : {}), symbols });
+    }
   },
   {
     name: "market_get_ticker_summary",
@@ -262,9 +284,9 @@ export const marketTools: ToolSpec[] = [
       const value = strictObject(input, ["symbol", "limit"]);
       return { symbol: requiredString(value, "symbol"), limit: normalizedListLimit(value, STANDARD_LIST_LIMIT) };
     },
-    handler: (input, context) => {
+    handler: async (input, context) => {
       const value = input as { symbol: string; limit: number };
-      return context.api.depth(value.symbol, value.limit);
+      return context.api.depth(await resolveTenantSymbol(context, value.symbol), value.limit);
     }
   },
   {
@@ -282,7 +304,8 @@ export const marketTools: ToolSpec[] = [
     },
     handler: async (input, context) => {
       const value = input as { symbol: string; limit: number };
-      return summarizeDepth(await context.api.depth(value.symbol, value.limit), value.symbol);
+      const apiSymbol = await resolveTenantSymbol(context, value.symbol);
+      return { ...(await summarizeDepth(await context.api.depth(apiSymbol, value.limit), value.symbol)), apiSymbol };
     }
   },
   {
@@ -298,9 +321,9 @@ export const marketTools: ToolSpec[] = [
       const value = strictObject(input, ["symbol", "limit"]);
       return { symbol: requiredString(value, "symbol"), limit: normalizedListLimit(value, STANDARD_LIST_LIMIT) };
     },
-    handler: (input, context) => {
+    handler: async (input, context) => {
       const value = input as { symbol: string; limit: number };
-      return context.api.trades(value.symbol, value.limit);
+      return context.api.trades(await resolveTenantSymbol(context, value.symbol), value.limit);
     }
   },
   {
@@ -318,7 +341,8 @@ export const marketTools: ToolSpec[] = [
     },
     handler: async (input, context) => {
       const value = input as { symbol: string; limit: number };
-      return summarizeTrades(await context.api.trades(value.symbol, value.limit), value.symbol);
+      const apiSymbol = await resolveTenantSymbol(context, value.symbol);
+      return { ...(await summarizeTrades(await context.api.trades(apiSymbol, value.limit), value.symbol)), apiSymbol };
     }
   },
   {
@@ -333,7 +357,10 @@ export const marketTools: ToolSpec[] = [
     validate: (input) => {
       return validateKlineInput(input, { summary: false });
     },
-    handler: (input, context) => context.api.klines(input as { symbol: string; interval: string; startTime?: number; endTime?: number; timezone?: string; limit?: number })
+    handler: async (input, context) => {
+      const value = input as { symbol: string; interval: string; startTime?: number; endTime?: number; timezone?: string; limit?: number };
+      return context.api.klines({ ...value, symbol: await resolveTenantSymbol(context, value.symbol) });
+    }
   },
   {
     name: "market_get_klines_summary",
@@ -349,7 +376,8 @@ export const marketTools: ToolSpec[] = [
     },
     handler: async (input, context) => {
       const value = input as { symbol: string; interval: string; startTime?: number; endTime?: number; timezone?: string; limit: number };
-      return summarizeKlines(await context.api.klines(value), value.symbol, value.interval);
+      const apiSymbol = await resolveTenantSymbol(context, value.symbol);
+      return { ...(await summarizeKlines(await context.api.klines({ ...value, symbol: apiSymbol }), value.symbol, value.interval)), apiSymbol };
     }
   },
   {
@@ -365,7 +393,7 @@ export const marketTools: ToolSpec[] = [
     handler: async (input, context) => {
       const value = input as { symbol: string; startTime?: number; endTime?: number; limit: number };
       const { symbol, startTime, endTime, limit } = value;
-      return boundHistoricalMinuteKlines(await context.api.historicalMinuteKlines({ symbol, startTime, endTime }), limit);
+      return boundHistoricalMinuteKlines(await context.api.historicalMinuteKlines({ symbol: await resolveTenantSymbol(context, symbol), startTime, endTime }), limit);
     }
   }
 ];

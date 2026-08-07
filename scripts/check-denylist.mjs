@@ -4,7 +4,10 @@ import { join, relative } from "node:path";
 const root = new URL("..", import.meta.url).pathname;
 const excluded = new Set([".git", "node_modules", "dist", "coverage"]);
 const textExtensions = new Set([".md", ".ts", ".mts", ".cts", ".json", ".yaml", ".yml", ".toml", ".mjs"]);
-const denied = /chainup|coobit|\bcws\b|\bfutures\b|\bcontract\b/i;
+// Keep legacy brands and unsupported derivatives out of user-facing sources.
+// The generic technical word "contract" is intentionally allowed in TypeScript
+// identifiers such as an OpenAPI request contract.
+const denied = /chainup|coobit|\bcws\b|\bfutures\b/i;
 const violations = [];
 
 async function walk(directory) {

@@ -50,3 +50,5 @@ ai-hub market klines-1min-history --symbol BTCUSDT --start-time 1722470400000 --
 - `klines-1min-history` calls `GET /sapi/v2/klines_1min`; its server response is capped locally to the requested limit because the upstream endpoint has no page-size parameter.
 
 For a generic pair list, use `ai-hub market symbols-overview` first. Use `symbols-list` for a paged quote-asset list, `symbols-search --query <asset>` for a keyword lookup, and `symbol-info` only when the exact symbol's precision or minimum rules are needed. `symbols` returns complete metadata in pages of at most 50 rows.
+
+`symbol-info` includes `marketBuyMin`, the minimum quote-asset amount accepted for MARKET or STOP_MARKET BUY, and `marketSellMin`, the minimum base-asset quantity accepted for MARKET or STOP_MARKET SELL. These values come directly from `/sapi/v2/symbols`; the client enforces a value only when OpenAPI advertises it as greater than zero.

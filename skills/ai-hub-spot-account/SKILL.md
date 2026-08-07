@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-account
-version: "0.1.16"
+version: "0.1.17"
 description: Use this Skill when a user asks for one configured AI Hub spot-asset balance or a non-zero spot balance overview. Prefer AI Hub MCP Tools; use the local ai-hub CLI only when MCP is unavailable.
 ---
 
@@ -11,6 +11,8 @@ Use this Skill for one configured spot-asset balance or a bounded non-zero spot 
 ## MCP First
 
 If AI Hub MCP Tools are available, call `account_get_asset_balance` for one named asset and `account_list_balances` when no asset is named. Do not read this reference, run CLI help, or inspect configuration first. Use CLI only when MCP is unavailable.
+
+Read [../_shared/mcp-routing.md](../_shared/mcp-routing.md) for the shared MCP/CLI fallback boundary.
 
 ## Prerequisites
 

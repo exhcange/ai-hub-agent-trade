@@ -42,6 +42,8 @@ ai-hub spot order batch-cancel --symbol BTCUSDT --order-ids '["123456","123457"]
 
 `MARKET BUY` requires `--quote-amount` and never accepts `--base-quantity`. `MARKET SELL` requires `--base-quantity` and never accepts `--quote-amount`. `LIMIT`, `IOC`, `FOK`, and `POST_ONLY` require `--base-quantity` and `--price`, and are sent as the OpenAPI `type` directly. `STOP` additionally requires `--trigger-price`; `STOP_MARKET` requires `--trigger-price` and uses quote amount for BUY or base quantity for SELL. Market and STOP_MARKET orders reject `--price`. Batch arrays contain 1–10 entries and support only `MARKET`, `LIMIT`, `IOC`, `FOK`, and `POST_ONLY`.
 
+Before any preview, shared Core reads `/sapi/v2/symbols` and applies the server's market minimums without inventing another threshold: MARKET or STOP_MARKET BUY requires `quoteAmount >= marketBuyMin`, while MARKET or STOP_MARKET SELL requires `baseQuantity >= marketSellMin`. Spot, margin, and batch placement use the same preflight. If the field is absent or zero on an older server, local minimum validation is skipped and OpenAPI remains authoritative.
+
 `sell-available` is the explicit exception for a request to sell all available balance: it floors the available base balance to the configured quantity precision, then shows the exact executable quantity and remainder in the preview. `market-sell` never rounds a user-supplied quantity.
 
 Every command that places or cancels an order is state-changing. After preview, the user—not an agent—must provide a new explicit confirmation message.
@@ -53,3 +55,5 @@ ai-hub confirm --confirmation-id <confirmation-id> --user-confirmation "yes"
 ```
 
 Never run this command from the same user instruction that generated the preview.
+
+After a confirmed single or batch cancellation, `CANCEL_REQUEST_ACCEPTED` means OpenAPI accepted the cancellation request. It does not prove that the order reached a final `CANCELED` state. Report that the request was accepted, inspect `acceptedOrderIds` and `failedOrderIds`, and query the order when the user needs its final status. Never describe a legacy upstream `success` entry as final cancellation completion.

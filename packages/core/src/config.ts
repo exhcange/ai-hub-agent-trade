@@ -26,6 +26,12 @@ export interface ResolvedProfile {
   configVersion: string;
 }
 
+/** One immutable configuration snapshot for one CLI command or MCP call. */
+export interface ResolvedProfileWithCredentials {
+  profile: ResolvedProfile;
+  credentials?: LoadedCredentials;
+}
+
 const CONFIG_DIRECTORY = ".ai-hub";
 const CONFIG_FILENAME = "config.toml";
 const PROFILE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
@@ -149,6 +155,21 @@ export class ConfigStore {
     const name = requestedName ?? config.default_profile;
     const profile = this.profileFrom(config, name);
     return loadStoredCredentials(profile.api_key, profile.secret_key);
+  }
+
+  /**
+   * Resolve the selected profile and credentials from exactly one config read.
+   * This does not cache across requests, so an on-disk profile change is still
+   * visible to the very next CLI command or MCP Tool call.
+   */
+  public async resolveProfileWithCredentials(requestedName?: string): Promise<ResolvedProfileWithCredentials> {
+    const config = await this.read();
+    const name = requestedName ?? config.default_profile;
+    const rawProfile = this.profileFrom(config, name);
+    return {
+      profile: this.resolveFrom(config, name),
+      credentials: loadStoredCredentials(rawProfile.api_key, rawProfile.secret_key)
+    };
   }
 
   public async removeProfile(name: string): Promise<void> {
