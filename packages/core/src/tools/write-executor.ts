@@ -1,6 +1,6 @@
 import { ConfirmationService, type ConfirmationStore, type PreparedAction } from "../confirmation.js";
 import { FileAuditLogger, type AuditLogger } from "../audit-log.js";
-import { AiHubError, toAiHubErrorPayload } from "../errors.js";
+import { AiHubError, createRequestId, toAiHubErrorPayload } from "../errors.js";
 import { confirmationContext } from "./execution-context.js";
 import type { ToolExecutionContext } from "./tool-spec.js";
 import { ToolRegistry } from "./tool-registry.js";
@@ -16,14 +16,14 @@ export class ToolWriteExecutor {
   public async prepare(name: string, input: unknown, context: ToolExecutionContext): Promise<PreparedAction> {
     const prepared = await this.registry.prepareWrite(name, input, context, this.confirmations);
     const tool = this.registry.byName(name);
-    await this.audit.record({ event: "prepared", profile: context.profile.name, tool: name, confirmationId: prepared.confirmationId, requestHash: prepared.requestHash, openApi: tool.openApiContract! });
+    await this.audit.record({ event: "prepared", profile: context.profile.name, tool: name, confirmationId: prepared.confirmationId, requestHash: prepared.requestHash, requestId: context.requestId ?? createRequestId(), openApi: tool.openApiContract! });
     return prepared;
   }
 
   public async confirm(confirmationId: string, userConfirmation: string, context: ToolExecutionContext): Promise<unknown> {
     const pending = await this.confirmations.confirm(confirmationId, userConfirmation, confirmationContext(context));
     const tool = this.registry.byName(pending.action);
-    const entry = { profile: context.profile.name, tool: pending.action, confirmationId, requestHash: pending.requestHash, openApi: tool.openApiContract! };
+    const entry = { profile: context.profile.name, tool: pending.action, confirmationId, requestHash: pending.requestHash, requestId: context.requestId ?? createRequestId(), openApi: tool.openApiContract! };
     await this.audit.record({ event: "execution_started", ...entry });
     try {
       const result = await this.registry.executeConfirmed(pending.action, pending.payload, context);

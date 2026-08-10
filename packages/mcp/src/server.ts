@@ -1,8 +1,9 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
-import { AI_HUB_RELEASE_VERSION, AiHubError, createToolExecutionContext, createToolRegistry, DEFAULT_MCP_RESPONSE_MODE, DEFAULT_MCP_TOOLSET, mcpRoutingInstructions, selectMcpToolset, toAiHubErrorPayload, ToolWriteExecutor, type McpResponseMode, type McpToolset, type ToolSpec } from "@ai-hub/agent-trade-core";
+import { AI_HUB_RELEASE_VERSION, AiHubError, createRequestId, createToolExecutionContext, createToolRegistry, DEFAULT_MCP_RESPONSE_MODE, DEFAULT_MCP_TOOLSET, mcpRoutingInstructions, selectMcpToolset, toAiHubErrorPayload, ToolWriteExecutor, type McpResponseMode, type McpToolset, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 const CONFIRM_ACTION_TOOL = "confirm_action";
+const SYSTEM_CAPABILITIES_TOOL = "system_get_capabilities";
 const SEMANTIC_INPUT_FIELDS = new Set(["quoteAmount", "baseQuantity", "price", "triggerPrice", "side", "type", "orders", "amount", "address", "fromAccountType", "toAccountType", "isolated", "nonZeroOnly"]);
 
 const ASSET_BALANCE_OUTPUT_SCHEMA: Tool["outputSchema"] = {
@@ -95,8 +96,8 @@ export function formatMcpData(data: unknown): unknown {
   return data;
 }
 
-export function toMcpErrorResult(error: unknown): CallToolResult {
-  const payload = toAiHubErrorPayload(error);
+export function toMcpErrorResult(error: unknown, requestId?: string): CallToolResult {
+  const payload = toAiHubErrorPayload(error, { requestId });
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, ...payload }) }] };
 }
 
@@ -127,6 +128,40 @@ function compactInputSchema(tool: ToolSpec): Tool["inputSchema"] {
     return [name, property];
   }));
   return { ...tool.inputSchema, ...(Object.keys(properties).length ? { properties } : {}) } as Tool["inputSchema"];
+}
+
+/**
+ * Claude Code, Claude Desktop, and OpenClaw may serialize omitted optional
+ * string properties as empty strings. Remove schema-declared optional blank
+ * strings, including nested array items. Unknown blank strings are also
+ * removed for clients that cached an older schema; required or nonblank
+ * unknown values remain for authoritative Core validation.
+ */
+export function normalizeMcpArguments(input: Record<string, unknown>, schema: Record<string, unknown>): Record<string, unknown> {
+  const properties = schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)
+    ? schema.properties as Record<string, unknown>
+    : {};
+  const required = new Set(Array.isArray(schema.required) ? schema.required.filter((item): item is string => typeof item === "string") : []);
+  const result: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(input)) {
+    const propertySchema = properties[name];
+    const definition = propertySchema && typeof propertySchema === "object" && !Array.isArray(propertySchema)
+      ? propertySchema as Record<string, unknown>
+      : undefined;
+    if (typeof value === "string" && !value.trim() && !required.has(name) && (!definition || definition.type === "string")) continue;
+    if (Array.isArray(value) && definition?.type === "array" && definition.items && typeof definition.items === "object" && !Array.isArray(definition.items)) {
+      result[name] = value.map((item) => item && typeof item === "object" && !Array.isArray(item)
+        ? normalizeMcpArguments(item as Record<string, unknown>, definition.items as Record<string, unknown>)
+        : item);
+      continue;
+    }
+    if (value && typeof value === "object" && !Array.isArray(value) && definition?.type === "object") {
+      result[name] = normalizeMcpArguments(value as Record<string, unknown>, definition);
+      continue;
+    }
+    result[name] = value;
+  }
+  return result;
 }
 
 function writeDescription(tool: ToolSpec): string {
@@ -172,6 +207,34 @@ function toPrepareMcpTool(tool: ToolSpec): Tool {
   };
 }
 
+function systemCapabilitiesTool(): Tool {
+  return {
+    name: SYSTEM_CAPABILITIES_TOOL,
+    inputSchema: { type: "object" }
+  };
+}
+
+export function buildSystemCapabilities(
+  profile: string,
+  tools: readonly ToolSpec[],
+  toolset: McpToolset,
+  responseMode: McpResponseMode,
+  readOnly: boolean
+): Record<string, unknown> {
+  const exposed = readOnly ? tools.filter((tool) => tool.operation === "read") : tools;
+  const read = exposed.filter((tool) => tool.operation === "read").length;
+  const write = exposed.filter((tool) => tool.operation === "write").length;
+  return {
+    profile,
+    toolset,
+    responseMode,
+    serviceVersion: AI_HUB_RELEASE_VERSION,
+    readOnly,
+    modules: [...new Set(exposed.map((tool) => tool.module))].sort(),
+    toolCounts: { read, write, total: read + write }
+  };
+}
+
 /** stdio adapter only: Tool schemas, validation, permissions, and handlers come from Core. */
 export function createServer(profileName: string | undefined, readOnly: boolean, toolset: McpToolset = DEFAULT_MCP_TOOLSET, responseMode: McpResponseMode = DEFAULT_MCP_RESPONSE_MODE): Server {
   const allTools = createToolRegistry();
@@ -187,6 +250,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
+      systemCapabilitiesTool(),
       ...registry.list({ readOnly }).flatMap((tool) => tool.operation === "write" ? [toPrepareMcpTool(tool)] : [toMcpTool(tool)]),
       ...(readOnly ? [] : [{
         name: CONFIRM_ACTION_TOOL,
@@ -199,6 +263,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const requestId = createRequestId();
     const requestStartedAt = performance.now();
     const debugTiming = timingEnabled();
     const timing: RequestTiming = { contextLoadMs: 0, openApiMs: 0, handlerMs: 0, totalMs: 0 };
@@ -207,7 +272,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
       try {
         return await createToolExecutionContext(profileName, debugTiming ? {
           onRequestTiming: (elapsed) => { timing.openApiMs += elapsed; }
-        } : undefined);
+        } : undefined, requestId);
       } finally {
         timing.contextLoadMs += elapsedMs(startedAt);
       }
@@ -221,6 +286,14 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
       }
     };
     try {
+      if (request.params.name === SYSTEM_CAPABILITIES_TOOL) {
+        const input = request.params.arguments ?? {};
+        if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 0) {
+          throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${SYSTEM_CAPABILITIES_TOOL} does not accept arguments.`);
+        }
+        const context = await loadContext();
+        return toMcpReadResult(buildSystemCapabilities(context.profile.name, registry.list(), toolset, responseMode, readOnly), responseMode);
+      }
       if (request.params.name === CONFIRM_ACTION_TOOL) {
         if (readOnly) throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Tool "${CONFIRM_ACTION_TOOL}" is not available in this server session.`);
         const input = request.params.arguments ?? {};
@@ -235,14 +308,16 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
       const preparedTool = readOnly ? undefined : registry.list().find((tool) => tool.operation === "write" && prepareToolName(tool) === request.params.name);
       if (preparedTool) {
         const context = await loadContext();
-        return result({ ok: true, data: await runHandler(() => writeExecutor.prepare(preparedTool.name, request.params.arguments ?? {}, context)) });
+        const input = normalizeMcpArguments(request.params.arguments ?? {}, preparedTool.inputSchema as Record<string, unknown>);
+        return result({ ok: true, data: await runHandler(() => writeExecutor.prepare(preparedTool.name, input, context)) });
       }
       const tool = registry.byName(request.params.name, { readOnly });
       const context = await loadContext();
-      const data = await runHandler(() => registry.execute(request.params.name, request.params.arguments ?? {}, context, { readOnly }));
+      const input = normalizeMcpArguments(request.params.arguments ?? {}, tool.inputSchema as Record<string, unknown>);
+      const data = await runHandler(() => registry.execute(request.params.name, input, context, { readOnly }));
       return toMcpReadResult(data, responseMode);
     } catch (error) {
-      return toMcpErrorResult(error);
+      return toMcpErrorResult(error, requestId);
     } finally {
       if (debugTiming) {
         timing.totalMs = elapsedMs(requestStartedAt);

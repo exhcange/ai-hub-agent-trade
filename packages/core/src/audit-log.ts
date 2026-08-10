@@ -12,6 +12,7 @@ export interface AuditRecord {
   tool: string;
   confirmationId: string;
   requestHash: string;
+  requestId?: string;
   openApi: Pick<OpenApiContract, "method" | "path">;
   errorCode?: string;
   upstreamCode?: string;

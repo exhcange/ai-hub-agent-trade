@@ -31,6 +31,8 @@ export interface JsonSchema {
 }
 
 export interface ToolExecutionContext {
+  /** Adapter request correlation ID. Optional for backward-compatible custom contexts. */
+  requestId?: string;
   profile: ResolvedProfile;
   credentials?: LoadedCredentials;
   api: AiHubSpotApi;

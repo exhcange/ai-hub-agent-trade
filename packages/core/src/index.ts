@@ -1,4 +1,4 @@
-export { AiHubError, OpenApiBusinessError, toAiHubErrorPayload, type OpenApiBusinessDiagnosis } from "./errors.js";
+export { AiHubError, createRequestId, OpenApiBusinessError, toAiHubErrorPayload, type AiHubErrorCategory, type AiHubErrorPayloadOptions, type AiHubOperationStatus, type OpenApiBusinessDiagnosis } from "./errors.js";
 export { AI_HUB_RELEASE_VERSION, AI_HUB_USER_AGENT } from "./release.js";
 export { loadStoredCredentials, validateApiCredentials, type ApiCredentials, type LoadedCredentials } from "./credential.js";
 export { ConfirmationService, FileConfirmationStore, type ConfirmationPreparer, type ConfirmationStore, type ConfirmedAction, type ExecutionContext, type PrepareActionInput, type PreparedAction } from "./confirmation.js";

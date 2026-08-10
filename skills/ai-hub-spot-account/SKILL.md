@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-account
-version: "0.1.17"
+version: "0.1.18"
 description: Use this Skill when a user asks for one configured AI Hub spot-asset balance or a non-zero spot balance overview. Prefer AI Hub MCP Tools; use the local ai-hub CLI only when MCP is unavailable.
 ---
 

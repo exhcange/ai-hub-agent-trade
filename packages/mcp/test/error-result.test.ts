@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { OpenApiBusinessError, diagnoseOpenApiBusinessError } from "@ai-hub/agent-trade-core";
-import { formatMcpData, toMcpErrorResult, toMcpReadResult } from "../src/server.js";
+import { AI_HUB_RELEASE_VERSION, createToolRegistry, OpenApiBusinessError, diagnoseOpenApiBusinessError } from "@ai-hub/agent-trade-core";
+import { buildSystemCapabilities, formatMcpData, normalizeMcpArguments, toMcpErrorResult, toMcpReadResult } from "../src/server.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../src/server.js";
@@ -10,13 +10,21 @@ test("MCP marks an upstream business failure as an MCP error with diagnosis", ()
   const error = new OpenApiBusinessError(
     diagnoseOpenApiBusinessError("/sapi/v1/withdraw/query", "10005", "Users don't have permission to access")
   );
-  const result = toMcpErrorResult(error);
+  const result = toMcpErrorResult(error, "request-id");
   assert.equal(result.isError, true);
   const content = result.content[0];
   assert.equal(content?.type, "text");
   const payload = JSON.parse(content?.text ?? "{}") as Record<string, unknown>;
   assert.deepEqual(payload, {
     ok: false,
+    request_id: "request-id",
+    error_category: "UPSTREAM_BUSINESS",
+    error_code: "AI_HUB_OPENAPI_BUSINESS_ERROR",
+    message: "OpenAPI business error 10005: Users don't have permission to access",
+    retry_after: null,
+    action_required: "Enable the withdrawal-history permission for this API key, then retry.",
+    operation_status: "REJECTED",
+    timestamp: payload.timestamp,
     code: "AI_HUB_OPENAPI_BUSINESS_ERROR",
     upstreamCode: "10005",
     upstreamMessage: "Users don't have permission to access",
@@ -25,6 +33,7 @@ test("MCP marks an upstream business failure as an MCP error with diagnosis", ()
     retryable: false,
     writeOutcomeUnknown: false
   });
+  assert.match(String(payload.timestamp), /^\d{4}-\d{2}-\d{2}T/);
 });
 
 test("MCP preserves each Core read result without a dataType wrapper", () => {
@@ -56,6 +65,48 @@ test("MCP compat reads preserve the former JSON text payload", () => {
   const data = formatMcpData([{ symbol: "BTC/USDT" }]);
   const result = toMcpReadResult(data, "compat");
   assert.deepEqual(JSON.parse((result.content[0] as { text: string }).text), { ok: true, data });
+});
+
+test("MCP drops schema-declared blank optional strings before Core validation", () => {
+  const registry = createToolRegistry();
+  const testOrder = registry.byName("spot_test_order");
+  const normalizedOrder = normalizeMcpArguments({
+    symbol: "BTCUSDT",
+    side: "BUY",
+    type: "LIMIT",
+    baseQuantity: "0.001",
+    price: "60000",
+    quoteAmount: "",
+    triggerPrice: "",
+    recvWindow: "",
+    newClientOrderId: ""
+  }, testOrder.inputSchema as Record<string, unknown>);
+  assert.deepEqual(normalizedOrder, { symbol: "BTCUSDT", side: "BUY", type: "LIMIT", baseQuantity: "0.001", price: "60000" });
+  assert.doesNotThrow(() => testOrder.validate(normalizedOrder));
+
+  const batch = registry.byName("spot_batch_place_orders");
+  const normalizedBatch = normalizeMcpArguments({
+    symbol: "BTCUSDT",
+    orders: [{ side: "BUY", type: "LIMIT", baseQuantity: "0.001", price: "60000", quoteAmount: "", triggerPrice: "", recvWindow: "", newClientOrderId: "" }]
+  }, batch.inputSchema as Record<string, unknown>);
+  assert.deepEqual(normalizedBatch, { symbol: "BTCUSDT", orders: [{ side: "BUY", type: "LIMIT", baseQuantity: "0.001", price: "60000" }] });
+  assert.doesNotThrow(() => batch.validate(normalizedBatch));
+});
+
+test("system capabilities report the active MCP configuration and Tool counts", () => {
+  const tools = [
+    { name: "read", module: "market", operation: "read" },
+    { name: "write", module: "orders", operation: "write" }
+  ] as never;
+  assert.deepEqual(buildSystemCapabilities("default", tools, "full", "compact", false), {
+    profile: "default",
+    toolset: "full",
+    responseMode: "compact",
+    serviceVersion: AI_HUB_RELEASE_VERSION,
+    readOnly: false,
+    modules: ["market", "orders"],
+    toolCounts: { read: 1, write: 1, total: 2 }
+  });
 });
 
 test("debug timing is opt-in and emits only anonymous timing fields", async () => {

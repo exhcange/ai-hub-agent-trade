@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AI_HUB_RELEASE_VERSION, AiHubError, ConfigStore, configFilePath, createToolExecutionContext, createToolRegistry, FileConfirmationStore, toAiHubErrorPayload, ToolWriteExecutor, type ToolSpec } from "@ai-hub/agent-trade-core";
+import { AI_HUB_RELEASE_VERSION, AiHubError, ConfigStore, configFilePath, createRequestId, createToolExecutionContext, createToolRegistry, FileConfirmationStore, toAiHubErrorPayload, ToolWriteExecutor, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 function printHelp(): void {
   process.stdout.write(`AI Hub Agent Trade CLI
@@ -150,7 +150,7 @@ function findTool(args: string[]): ToolSpec | undefined {
   return registry.list().sort((left, right) => right.cliPath.length - left.cliPath.length).find((tool) => tool.cliPath.every((part, index) => args[index] === part));
 }
 
-async function runTool(args: string[], profileName: string | undefined): Promise<void> {
+async function runTool(args: string[], profileName: string | undefined, requestId: string): Promise<void> {
   if (args.includes("--confirm")) {
     throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "--confirm is not supported. Generate a preview, wait for a new user confirmation, then run ai-hub confirm with the returned confirmation ID.");
   }
@@ -159,7 +159,7 @@ async function runTool(args: string[], profileName: string | undefined): Promise
   const tool = findTool(commandArgs);
   if (!tool) throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", "Unknown API command. Run ai-hub --help for available command groups.");
   const input = parseToolInput(tool, commandArgs.slice(tool.cliPath.length));
-  const context = await createToolExecutionContext(profileName);
+  const context = await createToolExecutionContext(profileName, undefined, requestId);
   if (tool.operation === "read") {
     json(await registry.execute(tool.name, input, context));
     return;
@@ -174,7 +174,7 @@ async function runTool(args: string[], profileName: string | undefined): Promise
   });
 }
 
-async function runConfirmation(args: string[], profileName: string | undefined): Promise<void> {
+async function runConfirmation(args: string[], profileName: string | undefined, requestId: string): Promise<void> {
   const confirmationId = optionValue(args, "--confirmation-id");
   const userConfirmation = optionValue(args, "--user-confirmation");
   if (!confirmationId || !userConfirmation) {
@@ -183,11 +183,11 @@ async function runConfirmation(args: string[], profileName: string | undefined):
   if (args.length !== 5 || args[0] !== "confirm" || args[1] !== "--confirmation-id" || args[2] !== confirmationId || args[3] !== "--user-confirmation" || args[4] !== userConfirmation) {
     throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "confirm accepts only --confirmation-id and --user-confirmation, plus --profile.");
   }
-  const context = await createToolExecutionContext(profileName);
+  const context = await createToolExecutionContext(profileName, undefined, requestId);
   json(await new ToolWriteExecutor(createToolRegistry(), new FileConfirmationStore()).confirm(confirmationId, userConfirmation, context));
 }
 
-export async function run(argv: string[]): Promise<void> {
+export async function run(argv: string[], requestId = createRequestId()): Promise<void> {
   if (argv.includes("--version") || argv.includes("-V")) {
     json({ version: AI_HUB_RELEASE_VERSION });
     return;
@@ -199,7 +199,7 @@ export async function run(argv: string[]): Promise<void> {
   const profile = optionValue(argv, "--profile");
   const commandArgs = profile ? argv.filter((value, index) => value !== "--profile" && index !== argv.indexOf("--profile") + 1) : argv;
 
-  if (commandArgs[0] === "confirm") return runConfirmation(commandArgs, profile);
+  if (commandArgs[0] === "confirm") return runConfirmation(commandArgs, profile, requestId);
   if (commandArgs[0] === "capabilities") {
     if (commandArgs.length !== 1) {
       throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "capabilities does not accept additional arguments.");
@@ -207,7 +207,7 @@ export async function run(argv: string[]): Promise<void> {
     json(cliCapabilities());
     return;
   }
-  if (commandArgs[0] !== "config") return runTool(commandArgs, profile);
+  if (commandArgs[0] !== "config") return runTool(commandArgs, profile, requestId);
 
   const action = commandArgs[1];
   const store = new ConfigStore();
@@ -264,8 +264,11 @@ function isDirectExecution(): boolean {
   }
 }
 
-if (isDirectExecution()) run(process.argv.slice(2)).catch((error: unknown) => {
-  const payload = toAiHubErrorPayload(error);
-  process.stderr.write(`${JSON.stringify(payload)}\n`);
-  process.exitCode = 1;
-});
+if (isDirectExecution()) {
+  const requestId = createRequestId();
+  run(process.argv.slice(2), requestId).catch((error: unknown) => {
+    const payload = toAiHubErrorPayload(error, { requestId });
+    process.stderr.write(`${JSON.stringify(payload)}\n`);
+    process.exitCode = 1;
+  });
+}

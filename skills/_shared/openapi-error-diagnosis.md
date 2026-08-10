@@ -2,11 +2,14 @@
 
 When the CLI or local MCP returns `AI_HUB_OPENAPI_BUSINESS_ERROR`, treat the request as failed even if the HTTP response was successful. Use the structured fields in this order:
 
+Every CLI and MCP failure includes `request_id`, `error_category`, `error_code`, `message`, `retryable`, `retry_after`, `action_required`, `operation_status`, and `timestamp`. Legacy fields such as `code`, `reason`, `suggestedAction`, `upstreamCode`, and `writeOutcomeUnknown` remain available for compatibility.
+
 1. Report `reason` and follow `suggestedAction`.
 2. Preserve `upstreamCode` and `upstreamMessage` for troubleshooting.
-3. Never retry a state-changing action automatically.
-4. If `writeOutcomeUnknown` is `true`, query the affected order or history record before any new action.
-5. If `reason` is `UNKNOWN_UPSTREAM_CODE`, report the raw code and message and do not invent a cause.
+3. Retry only when `retryable` is `true`; if `retry_after` is not null, wait at least that long. Never retry a state-changing action automatically.
+4. If `operation_status` is `UNKNOWN` or `writeOutcomeUnknown` is `true`, query the affected order or history record before any new action.
+5. Include the returned `request_id` when reporting or correlating an error. Do not generate a replacement ID.
+6. If `reason` is `UNKNOWN_UPSTREAM_CODE`, report the raw code and message and do not invent a cause.
 
 ## Common Diagnoses
 

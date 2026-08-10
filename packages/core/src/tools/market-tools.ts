@@ -232,7 +232,6 @@ export const marketTools: ToolSpec[] = [
     inputSchema: {
       type: "object",
       properties: { symbol: { type: "string", minLength: 1, description: "One exact symbol, for example ETHUSDT." }, symbols: { type: "string", minLength: 1, description: "An explicitly requested comma-separated upstream symbol list of at most 50 symbols." }, timeZone: { type: "string" } },
-      oneOf: [{ required: ["symbol"] }, { required: ["symbols"] }],
       additionalProperties: false
     },
     errorCodes: readErrors,

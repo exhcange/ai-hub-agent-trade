@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   AI_HUB_RELEASE_VERSION,
   AiHubError,
+  createRequestId,
   createToolExecutionContext,
   createToolRegistry,
   matchAiHubFastRoute,
@@ -144,7 +145,10 @@ function isDirectExecution(): boolean {
   }
 }
 
-if (isDirectExecution()) runFast(process.argv.slice(2)).catch((error: unknown) => {
-  process.stderr.write(`${JSON.stringify(toAiHubErrorPayload(error))}\n`);
-  process.exitCode = 1;
-});
+if (isDirectExecution()) {
+  const requestId = createRequestId();
+  runFast(process.argv.slice(2)).catch((error: unknown) => {
+    process.stderr.write(`${JSON.stringify(toAiHubErrorPayload(error, { requestId }))}\n`);
+    process.exitCode = 1;
+  });
+}

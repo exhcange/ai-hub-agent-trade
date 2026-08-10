@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot
-version: "0.1.17"
+version: "0.1.18"
 description: Use this Skill for supported AI Hub spot-market, account, order, wallet, or sub-account requests. Prefer the matching AI Hub MCP Tool; use the local ai-hub CLI only when MCP is unavailable. Enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for unsupported products or capabilities.
 ---
 

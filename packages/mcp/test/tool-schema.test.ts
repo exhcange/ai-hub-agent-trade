@@ -25,8 +25,8 @@ for (const toolset of ["default", "full"] as const) {
     const { client, server, tools } = await listTools(toolset);
     try {
       const registryTools = createToolRegistry().list();
-      assert.equal(tools.length, registryTools.length + 1, "confirm_action is the only non-Registry MCP tool");
-      assert.equal(tools.some((tool) => tool.name === "system_get_capabilities"), false);
+      assert.equal(tools.length, registryTools.length + 2, "system_get_capabilities and confirm_action are the non-Registry MCP tools");
+      assert.ok(tools.some((tool) => tool.name === "system_get_capabilities"));
       assert.ok(tools.some((tool) => tool.name === "confirm_action"));
       for (const tool of registryTools) {
         if (tool.operation === "read") {
@@ -41,6 +41,7 @@ for (const toolset of ["default", "full"] as const) {
       assert.ok(balance?.outputSchema);
       assert.ok(balances?.outputSchema);
       assert.equal(tools.find((tool) => tool.name === "market_get_ticker")?.outputSchema, undefined);
+      assert.equal("oneOf" in (tools.find((tool) => tool.name === "market_get_ticker")?.inputSchema ?? {}), false);
       assert.equal((balances?.inputSchema.properties?.nonZeroOnly as { default?: unknown } | undefined)?.default, true);
       const prepare = tools.find((tool) => tool.name === "spot_prepare_market_buy");
       assert.deepEqual(prepare?.annotations, {
@@ -64,6 +65,8 @@ test("read-only MCP removes every prepared write and confirmation", async () => 
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     const response = await client.listTools();
+    assert.equal(response.tools.some((item) => item.name === "system_get_capabilities"), true);
+    assert.equal(response.tools.some((item) => /(^|_)prepare_/.test(item.name)), false);
     assert.equal(response.tools.some((item) => item.name === "spot_prepare_market_buy"), false);
     assert.equal(response.tools.some((item) => item.name === "confirm_action"), false);
   } finally {

@@ -3,6 +3,7 @@ import test from "node:test";
 import { AiHubError, AiHubSpotApi, createToolRegistry, ToolRegistry, ToolWriteExecutor, type ToolExecutionContext, type ToolSpec } from "../src/index.js";
 
 const context: ToolExecutionContext = {
+  requestId: "request-id",
   profile: { name: "tenant-a", openApiBaseUrl: "https://api.example.com", configVersion: "config-v1" },
   credentials: { apiKey: "test-key", secretKey: "test-secret", credentialVersion: "credential-v1" },
   api: new AiHubSpotApi("https://api.example.com")

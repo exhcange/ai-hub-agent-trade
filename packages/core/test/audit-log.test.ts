@@ -25,6 +25,7 @@ test("writes only safe lifecycle metadata and retains seven days", async () => {
     tool: "spot_limit_order",
     confirmationId: "confirmation-id",
     requestHash: "a".repeat(64),
+    requestId: "request-id",
     openApi: { method: "POST", path: "/sapi/v2/order" }
   });
 
@@ -32,7 +33,7 @@ test("writes only safe lifecycle metadata and retains seven days", async () => {
   assert.ok(!files.includes("audit-2026-07-01.jsonl"));
   const file = join(directory, "audit-2026-07-09.jsonl");
   const line = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-  assert.deepEqual(Object.keys(line).sort(), ["confirmationId", "event", "openApi", "profile", "requestHash", "timestamp", "tool"]);
+  assert.deepEqual(Object.keys(line).sort(), ["confirmationId", "event", "openApi", "profile", "requestHash", "requestId", "timestamp", "tool"]);
   assert.deepEqual(line.openApi, { method: "POST", path: "/sapi/v2/order" });
   assert.doesNotMatch(JSON.stringify(line), /apiKey|secret|address|payload|response/i);
   assert.equal((await stat(file)).mode & 0o777, 0o600);
