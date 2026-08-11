@@ -18,7 +18,7 @@ function printUsage(): void {
     "AI Hub Agent Trade MCP\n\n" +
     "Usage:\n" +
     "  ai-hub-trade-mcp [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>] [--read-only]\n" +
-    "  ai-hub-trade-mcp setup --client <client> [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>]\n\n" +
+    "  ai-hub-trade-mcp setup --client <client> [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>] [--read-only]\n\n" +
     "The default command starts the local stdio MCP server.\n" +
     "Use setup to register it with Cursor, Claude Desktop, Claude Code, Codex, or OpenClaw.\n"
   );
@@ -39,6 +39,7 @@ export async function main(argv: string[]): Promise<void> {
     const profile = readOption(argv.slice(1), "--profile");
     const toolset = parseMcpToolset(readOption(argv.slice(1), "--toolset"));
     const responseMode = parseMcpResponseMode(readOption(argv.slice(1), "--response-mode"));
+    const readOnly = argv.slice(1).includes("--read-only");
     if (!client) {
       printMcpSetupUsage();
       return;
@@ -48,7 +49,7 @@ export async function main(argv: string[]): Promise<void> {
     }
     const entrypoint = process.argv[1];
     if (!entrypoint) throw new AiHubError("AI_HUB_UNEXPECTED_ERROR", "Cannot locate the local MCP server entrypoint for client setup.");
-    runMcpSetup({ client: client as McpClientId, profile, toolset, responseMode, launch: { command: process.execPath, args: [entrypoint] } });
+    runMcpSetup({ client: client as McpClientId, profile, toolset, responseMode, readOnly, launch: { command: process.execPath, args: [entrypoint] } });
     return;
   }
   const profileName = readOption(argv, "--profile");

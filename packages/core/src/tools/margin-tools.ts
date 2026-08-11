@@ -17,7 +17,7 @@ interface SemanticMarginOrder {
   side: "BUY" | "SELL";
   type: SpotOrderType;
   newClientOrderId: string;
-  isolated?: boolean;
+  isolated: boolean;
   price?: string;
   triggerPrice?: string;
   intent: MarginOrderIntent;
@@ -37,16 +37,52 @@ interface PreparedMarginCancel extends Record<string, unknown> {
   displaySymbol?: string;
   orderId: string;
   newClientOrderId?: string;
-  isolated?: boolean;
+  isolated: boolean;
+}
+
+const marginWriteErrors = [
+  ...writeErrors,
+  "AI_HUB_MARGIN_MODE_REQUIRED",
+  "AI_HUB_MARGIN_LEVERAGE_MULTIPLIER_NOT_SUPPORTED"
+] as const;
+
+const MARGIN_MODE_SCHEMA = {
+  type: "boolean"
+} as const;
+
+function strictMarginObject(input: unknown, allowedKeys: readonly string[]): Record<string, unknown> {
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    const value = input as Record<string, unknown>;
+    for (const name of ["leverage", "leverageMultiple", "leverageMultiplier", "multiplier"]) {
+      if (Object.hasOwn(value, name)) {
+        throw new AiHubError(
+          "AI_HUB_MARGIN_LEVERAGE_MULTIPLIER_NOT_SUPPORTED",
+          "AI Hub supports isolated and cross spot margin, but the OpenAPI order endpoint does not accept an explicit leverage multiplier such as 10x. Do not map this request to derivatives or a perpetual contract."
+        );
+      }
+    }
+  }
+  return strictObject(input, allowedKeys);
+}
+
+function requiredMarginMode(input: Record<string, unknown>): boolean {
+  const isolated = optionalBoolean(input, "isolated");
+  if (isolated === undefined) {
+    throw new AiHubError(
+      "AI_HUB_MARGIN_MODE_REQUIRED",
+      "isolated is required for every spot-margin write: true selects isolated margin and false selects cross margin. Do not infer the mode."
+    );
+  }
+  return isolated;
 }
 
 function validateMarginSemanticOrder(input: unknown): SemanticMarginOrder {
-  const value = strictObject(input, ["symbol", "side", "type", "quoteAmount", "baseQuantity", "price", "triggerPrice", "newClientOrderId", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "side", "type", "quoteAmount", "baseQuantity", "price", "triggerPrice", "newClientOrderId", "isolated"]);
   const symbol = requiredString(value, "symbol");
   const side = requiredEnum(value, "side", ["BUY", "SELL"] as const);
   const type = requiredEnum(value, "type", MARGIN_ORDER_TYPES);
-  const isolated = optionalBoolean(value, "isolated");
-  const common = { symbol, side, type, newClientOrderId: optionalClientOrderId(value), ...(isolated !== undefined ? { isolated } : {}) };
+  const isolated = requiredMarginMode(value);
+  const common = { symbol, side, type, newClientOrderId: optionalClientOrderId(value), isolated };
 
   if (type === "MARKET" && side === "BUY") {
     if (value.baseQuantity !== undefined) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "MARKET BUY uses quoteAmount (the amount of quote asset to spend), not baseQuantity.");
@@ -89,33 +125,33 @@ function validateMarginSemanticOrder(input: unknown): SemanticMarginOrder {
 }
 
 function validateMarginMarketBuy(input: unknown): SemanticMarginOrder {
-  const value = strictObject(input, ["symbol", "quoteAmount", "newClientOrderId", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "quoteAmount", "newClientOrderId", "isolated"]);
   return validateMarginSemanticOrder({ ...value, side: "BUY", type: "MARKET" });
 }
 
 function validateMarginMarketSell(input: unknown): SemanticMarginOrder {
-  const value = strictObject(input, ["symbol", "baseQuantity", "newClientOrderId", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "baseQuantity", "newClientOrderId", "isolated"]);
   return validateMarginSemanticOrder({ ...value, side: "SELL", type: "MARKET" });
 }
 
 function validateMarginLimitOrder(input: unknown): SemanticMarginOrder {
-  const value = strictObject(input, ["symbol", "side", "type", "baseQuantity", "price", "newClientOrderId", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "side", "type", "baseQuantity", "price", "newClientOrderId", "isolated"]);
   const type = value.type === undefined ? "LIMIT" : requiredEnum(value, "type", MARGIN_LIMIT_ORDER_TYPES);
   return validateMarginSemanticOrder({ ...value, type });
 }
 
 function validateMarginStopLimitOrder(input: unknown): SemanticMarginOrder {
-  const value = strictObject(input, ["symbol", "side", "baseQuantity", "price", "triggerPrice", "newClientOrderId", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "side", "baseQuantity", "price", "triggerPrice", "newClientOrderId", "isolated"]);
   return validateMarginSemanticOrder({ ...value, type: "STOP" });
 }
 
 function validateMarginStopMarketBuy(input: unknown): SemanticMarginOrder {
-  const value = strictObject(input, ["symbol", "quoteAmount", "triggerPrice", "newClientOrderId", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "quoteAmount", "triggerPrice", "newClientOrderId", "isolated"]);
   return validateMarginSemanticOrder({ ...value, side: "BUY", type: "STOP_MARKET" });
 }
 
 function validateMarginStopMarketSell(input: unknown): SemanticMarginOrder {
-  const value = strictObject(input, ["symbol", "baseQuantity", "triggerPrice", "newClientOrderId", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "baseQuantity", "triggerPrice", "newClientOrderId", "isolated"]);
   return validateMarginSemanticOrder({ ...value, side: "SELL", type: "STOP_MARKET" });
 }
 
@@ -128,7 +164,7 @@ function toMarginOpenApiOrder(order: SemanticMarginOrder): Record<string, unknow
     newClientOrderId: order.newClientOrderId,
     ...(order.price ? { price: order.price } : {}),
     ...(order.triggerPrice ? { triggerPrice: order.triggerPrice } : {}),
-    ...(order.isolated !== undefined ? { isolated: order.isolated } : {})
+    isolated: order.isolated
   };
 }
 
@@ -158,7 +194,8 @@ function marginOrderSummary(order: SemanticMarginOrder): Record<string, unknown>
       : order.quoteAmount
         ? { amount: order.quoteAmount, asset: order.displayQuoteAsset ?? order.quoteAsset ?? null, apiAsset: order.quoteAsset ?? null, status: "estimated" }
         : { amount: null, asset: order.displayQuoteAsset ?? order.quoteAsset ?? null, apiAsset: order.quoteAsset ?? null, status: "market_price_unknown" },
-    isolated: order.isolated ?? false,
+    isolated: order.isolated,
+    marginMode: order.isolated ? "ISOLATED" : "CROSS",
     newClientOrderId: order.newClientOrderId
   };
 }
@@ -189,7 +226,8 @@ async function preflightMarginCancel(input: Record<string, unknown>, context: Pa
     symbol: rule.symbol,
     requestedSymbol,
     displaySymbol: rule.displaySymbol ?? requestedSymbol,
-    orderId: String(input.orderId)
+    orderId: String(input.orderId),
+    isolated: input.isolated as boolean
   };
 }
 
@@ -198,28 +236,38 @@ function toMarginCancelOpenApi(input: PreparedMarginCancel): Record<string, unkn
     symbol: input.symbol,
     orderId: input.orderId,
     ...(input.newClientOrderId ? { newClientOrderId: input.newClientOrderId } : {}),
-    ...(input.isolated !== undefined ? { isolated: input.isolated } : {})
+    isolated: input.isolated
   };
 }
 
 function validateMarginOrderLookup(input: unknown): Record<string, unknown> {
-  const value = strictObject(input, ["symbol", "orderId", "newClientOrderId", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "orderId", "newClientOrderId", "isolated"]);
   return { symbol: requiredString(value, "symbol"), orderId: requiredString(value, "orderId"), ...(optionalString(value, "newClientOrderId") ? { newClientOrderId: optionalString(value, "newClientOrderId") } : {}), ...(optionalBoolean(value, "isolated") !== undefined ? { isolated: optionalBoolean(value, "isolated") } : {}) };
 }
 
+function validateMarginCancel(input: unknown): PreparedMarginCancel {
+  const value = strictMarginObject(input, ["symbol", "orderId", "newClientOrderId", "isolated"]);
+  return {
+    symbol: requiredString(value, "symbol"),
+    orderId: requiredString(value, "orderId"),
+    isolated: requiredMarginMode(value),
+    ...(optionalString(value, "newClientOrderId") ? { newClientOrderId: optionalString(value, "newClientOrderId") } : {})
+  };
+}
+
 function validateMarginOpenOrders(input: unknown): Record<string, unknown> {
-  const value = strictObject(input, ["symbol", "limit", "isolated"]);
+  const value = strictMarginObject(input, ["symbol", "limit", "isolated"]);
   return { ...(optionalString(value, "symbol") ? { symbol: optionalString(value, "symbol") } : {}), limit: normalizedListLimit(value, STANDARD_LIST_LIMIT), ...(optionalBoolean(value, "isolated") !== undefined ? { isolated: optionalBoolean(value, "isolated") } : {}) };
 }
 
 function validateMarginTrades(input: unknown): Record<string, unknown> {
-  const value = strictObject(input, ["symbol", "limit", "fromId"]);
+  const value = strictMarginObject(input, ["symbol", "limit", "fromId"]);
   return { symbol: requiredString(value, "symbol"), limit: normalizedListLimit(value, STANDARD_LIST_LIMIT), ...(optionalString(value, "fromId") ? { fromId: optionalString(value, "fromId") } : {}) };
 }
 
 export const marginTools: ToolSpec<any>[] = [
   {
-    name: "margin_get_order", title: "Get Margin Order", description: "Get one signed margin order from the v2 margin API.", cliPath: ["margin", "order", "get"],
+    name: "margin_get_order", title: "Get Spot Margin Order", description: "Get one isolated or cross spot-margin order. This capability is not for derivatives or perpetual contracts.", cliPath: ["margin", "order", "get"],
     module: "spot-margin", access: "signed", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, orderId: { type: "string" }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "orderId"], additionalProperties: false }, errorCodes: signedReadErrors,
     validate: validateMarginOrderLookup,
@@ -229,7 +277,7 @@ export const marginTools: ToolSpec<any>[] = [
     }
   },
   {
-    name: "margin_get_open_orders", title: "Get Open Margin Orders", description: "Get signed open margin orders from the v2 margin API.", cliPath: ["margin", "order", "open"],
+    name: "margin_get_open_orders", title: "Get Open Spot Margin Orders", description: "Get open isolated or cross spot-margin orders. This capability is not for derivatives or perpetual contracts.", cliPath: ["margin", "order", "open"],
     module: "spot-margin", access: "signed", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: listLimitSchema(STANDARD_LIST_LIMIT), isolated: { type: "boolean" } }, additionalProperties: false }, errorCodes: signedReadErrors,
     listLimit: STANDARD_LIST_LIMIT,
@@ -240,7 +288,7 @@ export const marginTools: ToolSpec<any>[] = [
     }
   },
   {
-    name: "margin_get_fills", title: "Get Margin Fills", description: "Get signed margin trade history from the v2 margin API.", cliPath: ["margin", "order", "fills"],
+    name: "margin_get_fills", title: "Get Spot Margin Fills", description: "Get spot-margin trade history from the v2 margin API. This capability is not for derivatives or perpetual contracts.", cliPath: ["margin", "order", "fills"],
     module: "spot-margin", access: "signed", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { symbol: { type: "string" }, limit: listLimitSchema(STANDARD_LIST_LIMIT), fromId: { type: "string" } }, required: ["symbol"], additionalProperties: false }, errorCodes: signedReadErrors,
     listLimit: STANDARD_LIST_LIMIT,
@@ -251,69 +299,69 @@ export const marginTools: ToolSpec<any>[] = [
     }
   },
   {
-    name: "margin_market_buy", title: "Margin Market Buy by Quote Amount", description: "Spend an exact quote-asset amount for an isolated or cross-margin market buy. For ETHUSDT, quoteAmount is USDT. A market buy cannot guarantee an exact base-asset quantity.", cliPath: ["margin", "order", "market-buy"],
+    name: "margin_market_buy", title: "Spot Margin Market Buy by Quote Amount", description: "Place an isolated or cross spot-margin market buy. Explicit leverage multipliers and derivatives are not supported.", cliPath: ["margin", "order", "market-buy"],
     module: "spot-margin", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, quoteAmount: { type: "string", description: "Required exact quote-asset amount to spend." }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "quoteAmount"], additionalProperties: false }, errorCodes: writeErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, quoteAmount: { type: "string", description: "Required exact quote-asset amount to spend." }, newClientOrderId: { type: "string" }, isolated: MARGIN_MODE_SCHEMA }, required: ["symbol", "quoteAmount", "isolated"], additionalProperties: false }, errorCodes: marginWriteErrors,
     validate: validateMarginMarketBuy,
     preflight: preflightMarginOrder,
     handler: (input, context) => context.api.signedPost("/sapi/v2/margin/order", toMarginOpenApiOrder(input as SemanticMarginOrder), signed(context)),
     writeSummary: (input) => marginOrderSummary(input as SemanticMarginOrder)
   },
   {
-    name: "margin_market_sell", title: "Margin Market Sell by Base Quantity", description: "Sell an exact base-asset quantity at market for an isolated or cross-margin account. For ETHUSDT, baseQuantity is ETH.", cliPath: ["margin", "order", "market-sell"],
+    name: "margin_market_sell", title: "Spot Margin Market Sell by Base Quantity", description: "Place an isolated or cross spot-margin market sell. Explicit leverage multipliers and derivatives are not supported.", cliPath: ["margin", "order", "market-sell"],
     module: "spot-margin", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, baseQuantity: { type: "string", description: "Required exact base-asset quantity to sell." }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "baseQuantity"], additionalProperties: false }, errorCodes: writeErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, baseQuantity: { type: "string", description: "Required exact base-asset quantity to sell." }, newClientOrderId: { type: "string" }, isolated: MARGIN_MODE_SCHEMA }, required: ["symbol", "baseQuantity", "isolated"], additionalProperties: false }, errorCodes: marginWriteErrors,
     validate: validateMarginMarketSell,
     preflight: preflightMarginOrder,
     handler: (input, context) => context.api.signedPost("/sapi/v2/margin/order", toMarginOpenApiOrder(input as SemanticMarginOrder), signed(context)),
     writeSummary: (input) => marginOrderSummary(input as SemanticMarginOrder)
   },
   {
-    name: "margin_limit_order", title: "Place Margin Limit-Style Order", description: "Place an isolated or cross-margin LIMIT, IOC, FOK, or POST_ONLY BUY or SELL using an exact base-asset quantity and a limit price. type defaults to LIMIT.", cliPath: ["margin", "order", "limit"],
+    name: "margin_limit_order", title: "Place Spot Margin Limit-Style Order", description: "Place an isolated or cross spot-margin limit-style order. Explicit leverage multipliers and derivatives are not supported.", cliPath: ["margin", "order", "limit"],
     module: "spot-margin", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, side: { type: "string", enum: ["BUY", "SELL"] }, type: { type: "string", enum: MARGIN_LIMIT_ORDER_TYPES, description: "OpenAPI order type. Defaults to LIMIT; use IOC, FOK, or POST_ONLY directly." }, baseQuantity: { type: "string", description: "Required exact base-asset quantity." }, price: { type: "string", description: "Required limit price in the quote asset." }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "side", "baseQuantity", "price"], additionalProperties: false }, errorCodes: writeErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, side: { type: "string", enum: ["BUY", "SELL"] }, type: { type: "string", enum: MARGIN_LIMIT_ORDER_TYPES, description: "OpenAPI order type. Defaults to LIMIT; use IOC, FOK, or POST_ONLY directly." }, baseQuantity: { type: "string", description: "Required exact base-asset quantity." }, price: { type: "string", description: "Required limit price in the quote asset." }, newClientOrderId: { type: "string" }, isolated: MARGIN_MODE_SCHEMA }, required: ["symbol", "side", "baseQuantity", "price", "isolated"], additionalProperties: false }, errorCodes: marginWriteErrors,
     validate: validateMarginLimitOrder,
     preflight: preflightMarginOrder,
     handler: (input, context) => context.api.signedPost("/sapi/v2/margin/order", toMarginOpenApiOrder(input as SemanticMarginOrder), signed(context)),
     writeSummary: (input) => marginOrderSummary(input as SemanticMarginOrder)
   },
   {
-    name: "margin_stop_limit_order", title: "Place Margin Stop-Limit Order", description: "Place an isolated or cross-margin STOP BUY or SELL using an exact base-asset quantity, a limit price, and a trigger price.", cliPath: ["margin", "order", "stop-limit"],
+    name: "margin_stop_limit_order", title: "Place Spot Margin Stop-Limit Order", description: "Place an isolated or cross spot-margin STOP order. Explicit leverage multipliers and derivatives are not supported.", cliPath: ["margin", "order", "stop-limit"],
     module: "spot-margin", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, side: { type: "string", enum: ["BUY", "SELL"] }, baseQuantity: { type: "string" }, price: { type: "string" }, triggerPrice: { type: "string" }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "side", "baseQuantity", "price", "triggerPrice"], additionalProperties: false }, errorCodes: writeErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, side: { type: "string", enum: ["BUY", "SELL"] }, baseQuantity: { type: "string" }, price: { type: "string" }, triggerPrice: { type: "string" }, newClientOrderId: { type: "string" }, isolated: MARGIN_MODE_SCHEMA }, required: ["symbol", "side", "baseQuantity", "price", "triggerPrice", "isolated"], additionalProperties: false }, errorCodes: marginWriteErrors,
     validate: validateMarginStopLimitOrder,
     preflight: preflightMarginOrder,
     handler: (input, context) => context.api.signedPost("/sapi/v2/margin/order", toMarginOpenApiOrder(input as SemanticMarginOrder), signed(context)),
     writeSummary: (input) => marginOrderSummary(input as SemanticMarginOrder)
   },
   {
-    name: "margin_stop_market_buy", title: "Place Margin Stop-Market Buy", description: "Place an isolated or cross-margin STOP_MARKET BUY that spends an exact quote-asset amount after the trigger price is reached.", cliPath: ["margin", "order", "stop-market-buy"],
+    name: "margin_stop_market_buy", title: "Place Spot Margin Stop-Market Buy", description: "Place an isolated or cross spot-margin STOP_MARKET BUY. Explicit leverage multipliers and derivatives are not supported.", cliPath: ["margin", "order", "stop-market-buy"],
     module: "spot-margin", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, quoteAmount: { type: "string" }, triggerPrice: { type: "string" }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "quoteAmount", "triggerPrice"], additionalProperties: false }, errorCodes: writeErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, quoteAmount: { type: "string" }, triggerPrice: { type: "string" }, newClientOrderId: { type: "string" }, isolated: MARGIN_MODE_SCHEMA }, required: ["symbol", "quoteAmount", "triggerPrice", "isolated"], additionalProperties: false }, errorCodes: marginWriteErrors,
     validate: validateMarginStopMarketBuy,
     preflight: preflightMarginOrder,
     handler: (input, context) => context.api.signedPost("/sapi/v2/margin/order", toMarginOpenApiOrder(input as SemanticMarginOrder), signed(context)),
     writeSummary: (input) => marginOrderSummary(input as SemanticMarginOrder)
   },
   {
-    name: "margin_stop_market_sell", title: "Place Margin Stop-Market Sell", description: "Place an isolated or cross-margin STOP_MARKET SELL for an exact base-asset quantity after the trigger price is reached.", cliPath: ["margin", "order", "stop-market-sell"],
+    name: "margin_stop_market_sell", title: "Place Spot Margin Stop-Market Sell", description: "Place an isolated or cross spot-margin STOP_MARKET SELL. Explicit leverage multipliers and derivatives are not supported.", cliPath: ["margin", "order", "stop-market-sell"],
     module: "spot-margin", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, baseQuantity: { type: "string" }, triggerPrice: { type: "string" }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "baseQuantity", "triggerPrice"], additionalProperties: false }, errorCodes: writeErrors,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, baseQuantity: { type: "string" }, triggerPrice: { type: "string" }, newClientOrderId: { type: "string" }, isolated: MARGIN_MODE_SCHEMA }, required: ["symbol", "baseQuantity", "triggerPrice", "isolated"], additionalProperties: false }, errorCodes: marginWriteErrors,
     validate: validateMarginStopMarketSell,
     preflight: preflightMarginOrder,
     handler: (input, context) => context.api.signedPost("/sapi/v2/margin/order", toMarginOpenApiOrder(input as SemanticMarginOrder), signed(context)),
     writeSummary: (input) => marginOrderSummary(input as SemanticMarginOrder)
   },
   {
-    name: "margin_cancel_order", title: "Cancel Margin Order", description: "Cancel one v2 margin order after confirmation.", cliPath: ["margin", "order", "cancel"],
+    name: "margin_cancel_order", title: "Cancel Spot Margin Order", description: "Cancel one isolated or cross spot-margin order after confirmation. This is not a derivatives order.", cliPath: ["margin", "order", "cancel"],
     module: "spot-margin", access: "signed", operation: "write", riskLevel: "high",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, orderId: { type: "string" }, newClientOrderId: { type: "string" }, isolated: { type: "boolean" } }, required: ["symbol", "orderId"], additionalProperties: false }, errorCodes: writeErrors,
-    validate: validateMarginOrderLookup,
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, orderId: { type: "string" }, newClientOrderId: { type: "string" }, isolated: MARGIN_MODE_SCHEMA }, required: ["symbol", "orderId", "isolated"], additionalProperties: false }, errorCodes: marginWriteErrors,
+    validate: validateMarginCancel,
     preflight: preflightMarginCancel,
     handler: (input, context) => context.api.signedPost("/sapi/v2/margin/cancel", toMarginCancelOpenApi(input as PreparedMarginCancel), signed(context)),
     writeSummary: (input) => {
       const value = input as PreparedMarginCancel;
-      return { action: "margin_cancel_order", symbol: value.displaySymbol ?? value.requestedSymbol ?? value.symbol, apiSymbol: value.symbol, orderId: value.orderId, isolated: value.isolated ?? false, newClientOrderId: value.newClientOrderId ?? null };
+      return { action: "margin_cancel_order", symbol: value.displaySymbol ?? value.requestedSymbol ?? value.symbol, apiSymbol: value.symbol, orderId: value.orderId, isolated: value.isolated, marginMode: value.isolated ? "ISOLATED" : "CROSS", newClientOrderId: value.newClientOrderId ?? null };
     }
   }
 ];

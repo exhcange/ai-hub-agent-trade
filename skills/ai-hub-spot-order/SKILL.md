@@ -1,18 +1,25 @@
 ---
 name: ai-hub-spot-order
-version: "0.1.18"
-description: Use this Skill when a user asks to test, retrieve, list current or historical orders, buy, sell, place limit-style or conditional spot orders, batch-place, cancel, or batch-cancel supported AI Hub spot orders. Use the local ai-hub CLI with a configured credential profile. Every state-changing action requires an exact preview followed by a new manual user confirmation.
+version: "0.1.19"
+description: Use this Skill when a user asks to retrieve or place supported AI Hub spot or isolated/cross spot-margin orders. Use the local ai-hub CLI with a configured credential profile. Never route to derivatives or accept an explicit leverage multiplier. Every state-changing action requires an exact preview followed by a new manual user confirmation.
 ---
 
 # AI Hub Spot Orders
 
-Use this Skill only for supported spot order operations. Do not infer an order size, symbol, side, price, or order ID. For financial actions, preserve the exact values supplied by the user.
+Use this Skill only for supported spot and spot-margin order operations. Do not infer an order size, symbol, side, price, order ID, or margin mode. For financial actions, preserve the exact values supplied by the user.
+
+## Spot Margin Boundary
+
+- Margin commands mean isolated or cross **spot margin only**. Never offer perpetuals, long/short positions, or another non-spot route.
+- An explicit leverage multiplier such as `10x` is not accepted by the OpenAPI order endpoint. Do not reinterpret it as an order amount, margin mode, or contract request.
+- For a request such as “open BTC at 10x”, explain that explicit leverage multiples are unsupported, state that only spot margin is available, and request the supported fields: isolated or cross mode, symbol, BUY or SELL, quantity or quote amount, and order type.
+- Every spot-margin write requires an explicit mode: `--isolated true` selects isolated margin and `--isolated false` selects cross margin. Never rely on an upstream default.
 
 The CLI and MCP resolve a display symbol such as `BTCUSDT` or `BTC/USDT` from the selected profile's symbol snapshot before every spot order read or write. A mixed-cloud tenant therefore submits its own physical OpenAPI symbol; do not add a tenant suffix manually.
 
 ## MCP First
 
-If AI Hub MCP Tools are available, call the matching read Tool or `spot_prepare_*` Tool directly. Do not read CLI references, run CLI help, or inspect configuration first. After a prepare result, stop for a new user message before `confirm_action`. Use CLI Fast Path only when MCP is unavailable.
+If AI Hub MCP Tools are available, call the matching read Tool, `spot_prepare_*` Tool, or `margin_prepare_*` Tool directly. Do not read CLI references, run CLI help, or inspect configuration first. After a prepare result, stop for a new user message before `confirm_action`. Use CLI Fast Path only when MCP is unavailable.
 
 Read [../_shared/mcp-routing.md](../_shared/mcp-routing.md) for the shared MCP routing and fallback rules.
 
@@ -46,6 +53,8 @@ When a read request has its complete command parameters, run it directly. When a
 | `ai-hub spot order batch-place` | Write | Place 1–10 orders for one symbol. |
 | `ai-hub spot order batch-cancel` | Write | Submit cancellation requests for 1–10 orders for one symbol. |
 
+Spot-margin commands use the corresponding `ai-hub margin order ...` paths for `get`, `open`, `fills`, `market-buy`, `market-sell`, `limit`, `stop-limit`, `stop-market-buy`, `stop-market-sell`, and `cancel`. Every margin write also requires `--isolated true|false`.
+
 ## Read and Test Workflow
 
 1. Use `test` when the user wants parameter validation without a matching-engine submission.
@@ -67,6 +76,8 @@ When a read request has its complete command parameters, run it directly. When a
 11. Stop and wait for a new explicit user message. Only then run `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` exactly once.
 12. Never type, pipe, generate, or infer a confirmation. Never use `--confirm`; it is intentionally rejected.
 13. Do not automatically retry an uncertain result. Query the order first.
+
+For spot margin, apply the same unit, precision, preview, and confirmation rules. Require `--isolated true` or `--isolated false` on every write. If the user supplies a leverage multiplier, stop before preview and explain that the multiplier is unsupported.
 
 For `batch-place`, provide semantic order items only: `MARKET BUY` uses `quoteAmount`; `MARKET SELL` uses `baseQuantity`; `LIMIT`, `IOC`, `FOK`, and `POST_ONLY` use `baseQuantity` plus `price`. Each item can provide `newClientOrderId`; otherwise the CLI generates one. The Core compiles this to the OpenAPI's `batchType`, `volume`, and `client_order_id` fields only after preflight. Do not supply raw `volume` or `client_order_id` yourself.
 

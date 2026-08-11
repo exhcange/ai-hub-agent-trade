@@ -18,6 +18,7 @@ test("MCP help prints usage and does not start the stdio server", async () => {
   }
 
   assert.match(output.join(""), /ai-hub-trade-mcp \[--profile <name>\]/);
+  assert.match(output.join(""), /setup --client <client>.*\[--read-only\]/);
   assert.match(output.join(""), /default command starts the local stdio MCP server/i);
 });
 

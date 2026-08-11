@@ -5,8 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { AiHubError, getMcpClientConfigPath, MCP_CLIENT_NAMES, runMcpSetup, SUPPORTED_MCP_CLIENTS } from "../src/index.js";
 
-function setupOptions(client: "cursor" | "claude-desktop" | "claude-code" | "codex" | "openclaw", profile?: string) {
-  return { client, profile, launch: { command: "/usr/local/bin/node", args: ["/opt/ai-hub/agent-trade-mcp/dist/index.js"] } };
+function setupOptions(client: "cursor" | "claude-desktop" | "claude-code" | "codex" | "openclaw", profile?: string, readOnly = false) {
+  return { client, profile, readOnly, launch: { command: "/usr/local/bin/node", args: ["/opt/ai-hub/agent-trade-mcp/dist/index.js"] } };
 }
 
 test("declares the supported MCP clients", () => {
@@ -83,6 +83,25 @@ test("merges a Cursor MCP registration and keeps an existing server", async () =
     args: ["/opt/ai-hub/agent-trade-mcp/dist/index.js", "--profile", "tenant-a", "--toolset", "default", "--response-mode", "compact"]
   });
   assert.equal(await readFile(`${configPath}.bak`, "utf8"), JSON.stringify({ mcpServers: { existing: { command: "other" } } }));
+});
+
+test("persists read-only mode in a generated client registration", async () => {
+  const home = await mkdtemp(join(tmpdir(), "ai-hub-setup-"));
+  const configPath = join(home, ".cursor", "mcp.json");
+
+  runMcpSetup(setupOptions("cursor", "default", true), { home, platform: "darwin", cwd: home });
+
+  const config = JSON.parse(await readFile(configPath, "utf8")) as { mcpServers: Record<string, { args: string[] }> };
+  assert.deepEqual(config.mcpServers.aihub?.args, [
+    "/opt/ai-hub/agent-trade-mcp/dist/index.js",
+    "--profile",
+    "default",
+    "--toolset",
+    "default",
+    "--response-mode",
+    "compact",
+    "--read-only"
+  ]);
 });
 
 test("keeps an existing legacy MCP registration and reports the migration", async () => {

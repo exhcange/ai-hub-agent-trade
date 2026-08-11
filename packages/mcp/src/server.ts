@@ -165,6 +165,9 @@ export function normalizeMcpArguments(input: Record<string, unknown>, schema: Re
 }
 
 function writeDescription(tool: ToolSpec): string {
+  if (tool.module === "spot-margin") {
+    return "Spot margin; mode required; no derivatives or leverage multiplier. Preview.";
+  }
   const unitRule = tool.name === "spot_batch_place_orders" ? " MARKET BUY items spend quoteAmount; other items use baseQuantity."
     : tool.name.includes("stop_market_buy") ? " STOP_MARKET BUY spends quoteAmount and requires triggerPrice."
     : tool.name.includes("stop_market_sell") ? " STOP_MARKET SELL uses baseQuantity and requires triggerPrice."
@@ -230,6 +233,11 @@ export function buildSystemCapabilities(
     responseMode,
     serviceVersion: AI_HUB_RELEASE_VERSION,
     readOnly,
+    productScope: {
+      spot: true,
+      spotMargin: { isolated: true, cross: true, explicitLeverageMultiplier: false },
+      derivatives: false
+    },
     modules: [...new Set(exposed.map((tool) => tool.module))].sort(),
     toolCounts: { read, write, total: read + write }
   };

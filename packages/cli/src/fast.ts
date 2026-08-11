@@ -67,6 +67,8 @@ export function codexAgentArguments(prompt: string, profile: string | undefined)
   const agentPrompt = [
     "Use only the configured AI Hub MCP server \"aihub\".",
     "Do not read Skills, call any CLI or shell command, use web search, or use non-AIHub tools.",
+    "AI Hub margin means isolated or cross spot margin only. Never offer perpetuals or other non-spot products. Explicit leverage multipliers such as 10x are unsupported; explain that boundary and request the supported spot-margin fields instead.",
+    "For every spot-margin write, require the user to explicitly choose isolated or cross margin; never infer it.",
     "For writes, call only a prepare tool, show the preview, and stop. Never call confirm_action until a new user message explicitly confirms that exact preview.",
     `User request: ${prompt}`
   ].join(" ");

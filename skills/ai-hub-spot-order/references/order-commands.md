@@ -2,6 +2,8 @@
 
 All commands require a profile with locally configured credentials. Use explicit asset units: a market BUY spends `quoteAmount`; a market SELL and every limit order use `baseQuantity`. The legacy OpenAPI `volume` field is never accepted by the CLI.
 
+Margin commands are isolated or cross **spot margin only**. They do not support perpetuals, other non-spot products, or an explicit leverage multiplier such as `10x`. Every margin write requires `--isolated true` or `--isolated false`.
+
 | Command | Required options | Optional options |
 | --- | --- | --- |
 | `ai-hub spot order test` | `--symbol`, `--side`, `--type`, plus `--quote-amount` for `MARKET`/`STOP_MARKET` BUY or `--base-quantity` otherwise | `--price` for `LIMIT`/`IOC`/`FOK`/`POST_ONLY`/`STOP`, `--trigger-price` for `STOP`/`STOP_MARKET`, `--new-client-order-id`, `--recv-window`, `--profile` |
@@ -19,6 +21,16 @@ All commands require a profile with locally configured credentials. Use explicit
 | `ai-hub spot order cancel` | `--symbol`, `--order-id` | `--new-client-order-id`, `--profile` |
 | `ai-hub spot order batch-place` | `--symbol`, `--orders` JSON array | `--profile` |
 | `ai-hub spot order batch-cancel` | `--symbol`, `--order-ids` JSON array | `--profile` |
+
+| Spot-margin command | Required options | Optional options |
+| --- | --- | --- |
+| `ai-hub margin order market-buy` | `--symbol`, `--quote-amount`, `--isolated true|false` | `--new-client-order-id`, `--profile` |
+| `ai-hub margin order market-sell` | `--symbol`, `--base-quantity`, `--isolated true|false` | `--new-client-order-id`, `--profile` |
+| `ai-hub margin order limit` | `--symbol`, `--side`, `--base-quantity`, `--price`, `--isolated true|false` | `--type LIMIT|IOC|FOK|POST_ONLY`, `--new-client-order-id`, `--profile` |
+| `ai-hub margin order stop-limit` | `--symbol`, `--side`, `--base-quantity`, `--price`, `--trigger-price`, `--isolated true|false` | `--new-client-order-id`, `--profile` |
+| `ai-hub margin order stop-market-buy` | `--symbol`, `--quote-amount`, `--trigger-price`, `--isolated true|false` | `--new-client-order-id`, `--profile` |
+| `ai-hub margin order stop-market-sell` | `--symbol`, `--base-quantity`, `--trigger-price`, `--isolated true|false` | `--new-client-order-id`, `--profile` |
+| `ai-hub margin order cancel` | `--symbol`, `--order-id`, `--isolated true|false` | `--new-client-order-id`, `--profile` |
 
 Examples:
 
@@ -38,6 +50,8 @@ ai-hub spot order stop-market-sell --symbol ETHUSDT --base-quantity 0.5 --trigge
 ai-hub spot order cancel --symbol BTCUSDT --order-id 123456
 ai-hub spot order batch-place --symbol BTCUSDT --orders '[{"side":"BUY","type":"LIMIT","baseQuantity":"0.001","price":"60000"}]'
 ai-hub spot order batch-cancel --symbol BTCUSDT --order-ids '["123456","123457"]'
+ai-hub margin order market-buy --symbol BTCUSDT --quote-amount 100 --isolated true
+ai-hub margin order limit --symbol BTCUSDT --side BUY --base-quantity 0.001 --price 60000 --isolated false
 ```
 
 `MARKET BUY` requires `--quote-amount` and never accepts `--base-quantity`. `MARKET SELL` requires `--base-quantity` and never accepts `--quote-amount`. `LIMIT`, `IOC`, `FOK`, and `POST_ONLY` require `--base-quantity` and `--price`, and are sent as the OpenAPI `type` directly. `STOP` additionally requires `--trigger-price`; `STOP_MARKET` requires `--trigger-price` and uses quote amount for BUY or base quantity for SELL. Market and STOP_MARKET orders reject `--price`. Batch arrays contain 1–10 entries and support only `MARKET`, `LIMIT`, `IOC`, `FOK`, and `POST_ONLY`.

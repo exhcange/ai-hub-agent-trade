@@ -24,6 +24,8 @@ Usage:
   ai-hub sub-account api-key <list|set-ip|delete> [options]
 
 State-changing commands only create a preview and exit. After a new user confirmation, run ai-hub confirm with the returned confirmation ID.
+Margin commands are spot margin only: isolated and cross are supported; derivatives and explicit leverage multipliers such as 10x are not.
+Every margin write requires --isolated true for isolated margin or --isolated false for cross margin.
 ai-hub account asset-balance --asset <asset> queries one asset. ai-hub account balances lists compact balances from /sapi/v1/account.
 Credentials are prompted interactively and saved as plaintext in ~/.ai-hub/config.toml (mode 600).
 Array arguments such as --orders and --order-ids use a JSON array value.
@@ -66,6 +68,11 @@ function cliCapabilities(): Record<string, unknown> {
   return {
     version: AI_HUB_RELEASE_VERSION,
     configPath: configFilePath(),
+    productScope: {
+      spot: true,
+      spotMargin: { isolated: true, cross: true, explicitLeverageMultiplier: false },
+      derivatives: false
+    },
     summary: {
       totalTools: tools.length,
       readTools: tools.filter((tool) => tool.operation === "read").length,
@@ -118,7 +125,7 @@ function camelCase(value: string): string {
   return value.replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase());
 }
 
-function parseToolInput(tool: ToolSpec, args: string[]): Record<string, unknown> {
+export function parseToolInput(tool: ToolSpec, args: string[]): Record<string, unknown> {
   const properties = tool.inputSchema.properties ?? {};
   const input: Record<string, unknown> = {};
   for (let index = 0; index < args.length; index += 1) {
@@ -130,6 +137,12 @@ function parseToolInput(tool: ToolSpec, args: string[]): Record<string, unknown>
     if (!value || value.startsWith("--")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${option} requires a value.`);
     index += 1;
     const property = properties[key] as { type?: string } | undefined;
+    // Preserve known unsupported spot-margin multiplier arguments so the
+    // shared Core validator returns its specific capability-boundary error.
+    if (!property && tool.module === "spot-margin" && ["leverage", "leverageMultiple", "leverageMultiplier", "multiplier"].includes(key)) {
+      input[key] = value;
+      continue;
+    }
     if (!property) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `Unknown argument "${option}" for ${tool.cliPath.join(" ")}.`);
     if (property.type === "integer") {
       input[key] = Number(value);

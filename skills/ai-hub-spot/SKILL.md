@@ -1,12 +1,14 @@
 ---
 name: ai-hub-spot
-version: "0.1.18"
-description: Use this Skill for supported AI Hub spot-market, account, order, wallet, or sub-account requests. Prefer the matching AI Hub MCP Tool; use the local ai-hub CLI only when MCP is unavailable. Enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for unsupported products or capabilities.
+version: "0.1.19"
+description: Use this Skill for supported AI Hub spot-market, isolated or cross spot-margin, account, order, wallet, or sub-account requests. Prefer the matching AI Hub MCP Tool; use the local ai-hub CLI only when MCP is unavailable. Enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for derivatives or unsupported capabilities.
 ---
 
 # AI Hub Spot
 
 Route supported spot-account requests to the matching MCP Tool when AI Hub MCP is available. Use the `ai-hub` CLI only as an MCP fallback. Do not invent commands or capabilities outside the installed integration.
+
+AI Hub margin means isolated or cross **spot margin only**. Never offer perpetuals or other non-spot products. An explicit leverage multiplier such as `10x` is not an available order parameter. Explain that boundary and ask for the supported spot-margin fields instead.
 
 ## MCP First
 
@@ -32,6 +34,7 @@ When the request maps to one installed CLI command and all required parameters a
 | View one asset such as USDT | `account_get_asset_balance` / `ai-hub account asset-balance --asset USDT` |
 | View BTC price | `market_get_last_price` / `ai-hub market price --symbol BTCUSDT` |
 | View open spot orders | `spot_get_open_orders` / `ai-hub spot order open` |
+| Place an isolated or cross spot-margin order | Matching `margin_prepare_*` Tool / matching `ai-hub margin order ... --isolated true|false` command |
 | Other market, order, wallet, or sub-account work | Matching focused MCP Tool / matching focused CLI Skill |
 
 ## Safety Boundary

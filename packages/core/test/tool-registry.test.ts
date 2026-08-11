@@ -81,8 +81,18 @@ test("spot and margin orders use the service's direct advanced type and conditio
   const stopMarketBuy = registry.byName("spot_stop_market_buy").validate({ symbol: "ETHUSDT", quoteAmount: "100", triggerPrice: "2000" }) as Record<string, unknown>;
   assert.deepEqual({ type: stopMarketBuy.type, volume: stopMarketBuy.volume, triggerPrice: stopMarketBuy.triggerPrice }, { type: "STOP_MARKET", volume: "100", triggerPrice: "2000" });
 
-  const marginFok = registry.byName("margin_limit_order").validate({ symbol: "BTCUSDT", side: "BUY", type: "FOK", baseQuantity: "0.001", price: "60000" }) as Record<string, unknown>;
+  const marginFok = registry.byName("margin_limit_order").validate({ symbol: "BTCUSDT", side: "BUY", type: "FOK", baseQuantity: "0.001", price: "60000", isolated: false }) as Record<string, unknown>;
   assert.equal(marginFok.type, "FOK");
+  assert.equal(marginFok.isolated, false);
+
+  assert.throws(
+    () => registry.byName("margin_limit_order").validate({ symbol: "BTCUSDT", side: "BUY", baseQuantity: "0.001", price: "60000" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_MARGIN_MODE_REQUIRED"
+  );
+  assert.throws(
+    () => registry.byName("margin_limit_order").validate({ symbol: "BTCUSDT", side: "BUY", baseQuantity: "0.001", price: "60000", isolated: true, leverage: "10" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_MARGIN_LEVERAGE_MULTIPLIER_NOT_SUPPORTED" && error.message.includes("10x")
+  );
 
   assert.throws(
     () => registry.byName("spot_limit_order").validate({ symbol: "BTCUSDT", side: "BUY", type: "STOP", baseQuantity: "0.001", price: "60000" }),
@@ -210,11 +220,11 @@ test("symbol info exposes market minimums and shared preflight applies them to s
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_SYMBOL_MINIMUM_NOT_MET"
   );
   await assert.rejects(
-    registry.prepareWrite("margin_market_buy", { symbol: "ETHUSDT", quoteAmount: "9.99" }, context, { prepare: (input) => input as never }),
+    registry.prepareWrite("margin_market_buy", { symbol: "ETHUSDT", quoteAmount: "9.99", isolated: true }, context, { prepare: (input) => input as never }),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_SYMBOL_MINIMUM_NOT_MET"
   );
   await assert.rejects(
-    registry.prepareWrite("margin_market_sell", { symbol: "ETHUSDT", baseQuantity: "0.0009" }, context, { prepare: (input) => input as never }),
+    registry.prepareWrite("margin_market_sell", { symbol: "ETHUSDT", baseQuantity: "0.0009", isolated: false }, context, { prepare: (input) => input as never }),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_SYMBOL_MINIMUM_NOT_MET"
   );
 });

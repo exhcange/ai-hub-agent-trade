@@ -11,10 +11,11 @@ For low-latency natural-language reads, the CLI package also installs `aihub`. R
 - Public spot market reads: connectivity, server time, symbols, ticker, depth, trades, and klines.
 - Bounded symbol overview, pagination, keyword search, and exact trading-rule lookup for responsive Agent interactions.
 - Compact single-symbol last-price reads through `market_get_last_price` / `ai-hub market price`.
-- Signed account, wallet, sub-account, margin, and transfer read capabilities.
-- Local stdio MCP and CLI tools for single/batch spot orders, v2 margin orders, wallet transfers and withdrawals, and sub-account administration.
+- Signed account, wallet, sub-account, isolated/cross spot-margin, and transfer read capabilities.
+- Local stdio MCP and CLI tools for single/batch spot orders, v2 isolated/cross spot-margin orders, wallet transfers and withdrawals, and sub-account administration. Derivatives and explicit leverage multipliers are not supported.
 - Shared Tool Registry for MCP and CLI schemas, validation, access controls, error codes, and handlers.
 - One-time spot order preparation and confirmation. Preparation never sends an OpenAPI request.
+- MCP read-only mode for exposing queries without order, cancellation, withdrawal, transfer, or confirmation capabilities. Use `ai-hub-trade-mcp --profile default --read-only`, or persist it with `ai-hub-trade-mcp setup --client <client> --profile default --read-only`.
 
 ## Required confirmation boundary
 

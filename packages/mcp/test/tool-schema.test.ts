@@ -50,6 +50,11 @@ for (const toolset of ["default", "full"] as const) {
         idempotentHint: true,
         openWorldHint: false
       });
+      const marginPrepare = tools.find((tool) => tool.name === "margin_prepare_market_buy");
+      assert.equal(marginPrepare?.title, "Prepare Spot Margin Market Buy by Quote Amount");
+      assert.ok(marginPrepare?.inputSchema.required?.includes("isolated"));
+      assert.match(marginPrepare?.description ?? "", /Spot margin/i);
+      assert.match(marginPrepare?.description ?? "", /no derivatives or leverage multiplier/i);
     } finally {
       await client.close();
       await server.close();

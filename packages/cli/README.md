@@ -59,7 +59,7 @@ Market BUY cannot guarantee an exact base-asset quantity. If the desired quantit
 
 Use `ai-hub account asset-balance --asset ETH` for one asset. Use `ai-hub account balances` when the user requests account balances without naming an asset; it returns only compact balance rows and defaults to non-zero assets. Use `ai-hub spot order sell-available --symbol ETHUSDT` when the user explicitly wants the maximum executable ETH balance sold: its preview floors only to the configured quantity precision and displays both the remainder and the amount that would be sold.
 
-The same unit rules apply to margin orders: use `margin order market-buy --quote-amount`, `margin order market-sell --base-quantity`, `margin order limit --type IOC|FOK|POST_ONLY --base-quantity --price`, or the matching `margin order stop-limit|stop-market-buy|stop-market-sell` command.
+The same unit rules apply to spot-margin orders: use `margin order market-buy --quote-amount`, `margin order market-sell --base-quantity`, `margin order limit --type IOC|FOK|POST_ONLY --base-quantity --price`, or the matching `margin order stop-limit|stop-market-buy|stop-market-sell` command. Margin commands support isolated and cross **spot margin only**; they do not support perpetuals, other non-spot products, or an explicit leverage multiplier such as `10x`. Every margin write requires `--isolated true` for isolated margin or `--isolated false` for cross margin. The CLI rejects an omitted mode instead of inferring it.
 
 For this OpenAPI, `LIMIT`, `IOC`, `FOK`, and `POST_ONLY` are direct `type` values. Do not supply `--time-in-force`: it is not a server parameter and is rejected by the CLI.
 

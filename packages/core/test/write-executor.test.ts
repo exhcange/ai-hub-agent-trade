@@ -124,10 +124,12 @@ test("margin order preparation uses the same explicit quote/base unit rules", as
   const buy = await executor.prepare("margin_market_buy", { symbol: "btcusdt", quoteAmount: "10", isolated: true }, contextWithSymbolRules);
   assert.equal((buy.summary.quantityOrAmount as Record<string, unknown>).value, "10");
   assert.equal(buy.summary.isolated, true);
-  const sell = await executor.prepare("margin_market_sell", { symbol: "btcusdt", baseQuantity: "0.01" }, contextWithSymbolRules);
+  assert.equal(buy.summary.marginMode, "ISOLATED");
+  const sell = await executor.prepare("margin_market_sell", { symbol: "btcusdt", baseQuantity: "0.01", isolated: false }, contextWithSymbolRules);
   assert.equal((sell.summary.quantityOrAmount as Record<string, unknown>).value, "0.01");
+  assert.equal(sell.summary.marginMode, "CROSS");
   await assert.rejects(
-    executor.prepare("margin_market_sell", { symbol: "btcusdt", quoteAmount: "10" }, contextWithSymbolRules),
+    executor.prepare("margin_market_sell", { symbol: "btcusdt", quoteAmount: "10", isolated: true }, contextWithSymbolRules),
     (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
   );
 });

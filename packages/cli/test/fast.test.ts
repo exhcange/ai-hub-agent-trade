@@ -36,6 +36,8 @@ test("aihub fast CLI falls back to a luna low MCP-only Codex Agent", async () =>
   assert.ok(args.some((value) => value.includes("mcp_servers.aihub.command")));
   assert.ok(args.some((value) => value.includes("skills.config") && value.includes("ai-hub-spot-account")));
   assert.match(args.at(-1) ?? "", /only the configured AI Hub MCP server/i);
+  assert.match(args.at(-1) ?? "", /isolated or cross spot margin only/i);
+  assert.match(args.at(-1) ?? "", /Explicit leverage multipliers such as 10x are unsupported/i);
   assert.match(args.at(-1) ?? "", /Never call confirm_action until a new user message/i);
 });
 

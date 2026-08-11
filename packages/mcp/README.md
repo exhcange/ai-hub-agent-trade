@@ -20,11 +20,28 @@ ai-hub-trade-mcp setup --client codex --profile default
 ai-hub-trade-mcp setup --client openclaw --profile default
 ai-hub-trade-mcp setup --client codex --profile default --toolset full
 ai-hub-trade-mcp setup --client codex --profile default --response-mode compat
+ai-hub-trade-mcp setup --client codex --profile default --read-only
 ```
 
 Setup registers the currently installed MCP binary through its absolute Node runtime and entrypoint path, so desktop clients do not depend on a global PATH or an unpublished `npx` package. Cursor and Claude Desktop configurations are merged with existing MCP servers through their JSON configurations. Claude Code, Codex, and OpenClaw are registered through their official CLIs; Claude Code uses user scope. Existing JSON configurations are validated, atomically updated, and backed up before their first modification. The setup command stores no API credentials; the MCP server continues to read its profile from `~/.ai-hub/config.toml`.
 
 Setup registers the default profile as `aihub`; a named profile becomes `aihub-<profile>`. Existing `ai-hub-trade-mcp*` registrations are kept and a migration note is printed, so remove the old registration manually only after confirming the new one works.
+
+## Read-only mode
+
+To expose queries while removing every order, cancellation, withdrawal, transfer, and other state-changing capability, start the server with:
+
+```bash
+ai-hub-trade-mcp --profile default --read-only
+```
+
+For a configured client, persist the same restriction through setup:
+
+```bash
+ai-hub-trade-mcp setup --client codex --profile default --read-only
+```
+
+Replace `codex` with `cursor`, `claude-desktop`, `claude-code`, or `openclaw` as needed. Read-only mode removes all `*_prepare_*` Tools and `confirm_action`; unavailable writes fail locally and do not send an OpenAPI request.
 
 For OpenClaw, run setup on the machine that runs the OpenClaw Gateway and as the same operating-system user as that Gateway. The selected AI Hub profile must exist in that user's `~/.ai-hub/config.toml`. Verify the registration after setup:
 
@@ -41,7 +58,9 @@ Before any order preview, MCP lazily loads `/sapi/v2/symbols` once per local pro
 
 ## Advanced order types
 
-`spot_prepare_limit_order` accepts `type: LIMIT|IOC|FOK|POST_ONLY` and sends that type directly to OpenAPI. `STOP` and `STOP_MARKET` have focused prepare tools: `spot_prepare_stop_limit_order`, `spot_prepare_stop_market_buy`, and `spot_prepare_stop_market_sell`. Conditional orders always require `triggerPrice`; STOP also requires `price`. STOP_MARKET BUY uses `quoteAmount`, while STOP_MARKET SELL uses `baseQuantity`. The same capabilities are available only in the `full` Toolset for margin through `margin_prepare_*` tools.
+`spot_prepare_limit_order` accepts `type: LIMIT|IOC|FOK|POST_ONLY` and sends that type directly to OpenAPI. `STOP` and `STOP_MARKET` have focused prepare tools: `spot_prepare_stop_limit_order`, `spot_prepare_stop_market_buy`, and `spot_prepare_stop_market_sell`. Conditional orders always require `triggerPrice`; STOP also requires `price`. STOP_MARKET BUY uses `quoteAmount`, while STOP_MARKET SELL uses `baseQuantity`.
+
+Margin Tools support isolated and cross **spot margin only**. They do not support perpetuals, other non-spot products, or an explicit leverage multiplier such as `10x`. Every `margin_prepare_*` Tool requires `isolated: true` for isolated margin or `isolated: false` for cross margin. An Agent must ask for this mode instead of inferring it. Requests that include a leverage-multiplier field fail with `AI_HUB_MARGIN_LEVERAGE_MULTIPLIER_NOT_SUPPORTED`.
 
 ## Read response
 

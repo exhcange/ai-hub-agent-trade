@@ -104,6 +104,11 @@ test("system capabilities report the active MCP configuration and Tool counts", 
     responseMode: "compact",
     serviceVersion: AI_HUB_RELEASE_VERSION,
     readOnly: false,
+    productScope: {
+      spot: true,
+      spotMargin: { isolated: true, cross: true, explicitLeverageMultiplier: false },
+      derivatives: false
+    },
     modules: ["market", "orders"],
     toolCounts: { read: 1, write: 1, total: 2 }
   });
