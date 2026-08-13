@@ -3,6 +3,7 @@ import type { SpotOrderType } from "../openapi.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalBoolean, optionalClientOrderId, optionalPositiveInteger, positiveDecimal, requiredEnum, signed, signedReadErrors, writeErrors } from "./tool-utils.js";
 import { STANDARD_LIST_LIMIT, listLimitSchema, normalizedListLimit } from "./list-limit.js";
+import { normalizeOrderWorkingStatus } from "./order-status.js";
 import { optionalString, requiredString, strictObject } from "./validation.js";
 import { getSymbolRule, multiplyDecimal, preflightSymbolOrder, resolveTenantSymbol } from "./symbol-rules.js";
 
@@ -274,7 +275,8 @@ export const marginTools: ToolSpec<any>[] = [
     handler: async (input, context) => {
       const value = input as Record<string, string | boolean | undefined>;
       return context.api.signedGet("/sapi/v2/margin/order", { ...value, symbol: await resolveMarginSymbol(context, String(value.symbol)) }, signed(context));
-    }
+    },
+    normalizeResult: (result) => normalizeOrderWorkingStatus(result)
   },
   {
     name: "margin_get_open_orders", title: "Get Open Spot Margin Orders", description: "Get open isolated or cross spot-margin orders. This capability is not for derivatives or perpetual contracts.", cliPath: ["margin", "order", "open"],
@@ -285,7 +287,8 @@ export const marginTools: ToolSpec<any>[] = [
     handler: async (input, context) => {
       const value = input as Record<string, string | number | boolean | undefined>;
       return context.api.signedGet("/sapi/v2/margin/openOrders", { ...value, ...(value.symbol ? { symbol: await resolveMarginSymbol(context, String(value.symbol)) } : {}) }, signed(context));
-    }
+    },
+    normalizeResult: (result) => normalizeOrderWorkingStatus(result)
   },
   {
     name: "margin_get_fills", title: "Get Spot Margin Fills", description: "Get spot-margin trade history from the v2 margin API. This capability is not for derivatives or perpetual contracts.", cliPath: ["margin", "order", "fills"],

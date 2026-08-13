@@ -7,6 +7,7 @@ import { requiredEnum } from "./tool-utils.js";
 import { optionalInteger, optionalString, requiredString, strictObject } from "./validation.js";
 import { STANDARD_LIST_LIMIT, listLimitSchema, normalizedListLimit } from "./list-limit.js";
 import { summarizeLastPrice } from "./market-summaries.js";
+import { normalizeOrderWorkingStatus } from "./order-status.js";
 import { addNonNegativeDecimal, exceedsUnfavourableDeviationBps, floorDecimal, getSymbolRule, isAtLeastDecimal, multiplyDecimal, preflightSymbolOrder, subtractNonNegativeDecimal } from "./symbol-rules.js";
 
 const signedReadErrors = ["AI_HUB_INVALID_ARGUMENT", "AI_HUB_CREDENTIAL_NOT_CONFIGURED", "AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_OPENAPI_HTTP_ERROR", "AI_HUB_OPENAPI_INVALID_RESPONSE", "AI_HUB_OPENAPI_BUSINESS_ERROR"] as const;
@@ -686,14 +687,26 @@ export const orderTools: ToolSpec<any>[] = [
     }
   },
   {
-    name: "spot_get_order", title: "Get Spot Order", description: "Get one signed spot order by symbol and order ID.", cliPath: ["spot", "order", "get"],
+    name: "spot_get_order", title: "Get Spot Order", description: "Get one signed spot order by symbol and exactly one of orderId or newClientOrderId.", cliPath: ["spot", "order", "get"],
     module: "spot-order", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { symbol: { type: "string" }, orderId: { type: "string" }, newClientOrderId: { type: "string" } }, required: ["symbol", "orderId"], additionalProperties: false }, errorCodes: signedReadErrors,
-    validate: (input) => { const value = strictObject(input, ["symbol", "orderId", "newClientOrderId"]); return { symbol: requiredString(value, "symbol"), orderId: requiredString(value, "orderId"), newClientOrderId: optionalString(value, "newClientOrderId") }; },
+    inputSchema: { type: "object", properties: { symbol: { type: "string" }, orderId: { type: "string", description: "Exchange order ID. Provide exactly one of orderId or newClientOrderId." }, newClientOrderId: { type: "string", description: "Client order ID. Provide exactly one of orderId or newClientOrderId." } }, required: ["symbol"], additionalProperties: false }, errorCodes: signedReadErrors,
+    validate: (input) => {
+      const value = strictObject(input, ["symbol", "orderId", "newClientOrderId"]);
+      const orderId = optionalString(value, "orderId");
+      const newClientOrderId = optionalString(value, "newClientOrderId");
+      if ((!orderId && !newClientOrderId) || (orderId && newClientOrderId)) {
+        throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Provide exactly one of orderId or newClientOrderId.");
+      }
+      return { symbol: requiredString(value, "symbol"), ...(orderId ? { orderId } : { newClientOrderId }) };
+    },
     handler: async (input, context) => {
-      const order = input as { symbol: string; orderId: string; newClientOrderId?: string };
-      return context.api.getOrder({ ...order, symbol: await resolveSpotSymbol(context, order.symbol) }, signed(context));
-    }
+      const order = input as { symbol: string; orderId?: string; newClientOrderId?: string };
+      const symbol = await resolveSpotSymbol(context, order.symbol);
+      const result = await context.api.getOrder({ ...order, symbol }, signed(context));
+      if (order.newClientOrderId) await context.unresolvedWrites?.resolve(context.profile.name, symbol, order.newClientOrderId);
+      return result;
+    },
+    normalizeResult: (result) => normalizeOrderWorkingStatus(result)
   },
   {
     name: "spot_batch_place_orders", title: "Batch Place Spot Orders", description: "Create up to 10 spot orders after confirmation. Each MARKET BUY item requires quoteAmount; MARKET SELL, LIMIT, IOC, FOK, and POST_ONLY items require baseQuantity; non-market items also require price. STOP and STOP_MARKET are not supported in batch placement.", cliPath: ["spot", "order", "batch-place"],
@@ -742,7 +755,8 @@ export const orderTools: ToolSpec<any>[] = [
     handler: async (input, context) => {
       const query = input as { symbol?: string; limit?: number };
       return context.api.getOpenOrders({ ...query, ...(query.symbol ? { symbol: await resolveSpotSymbol(context, query.symbol) } : {}) }, signed(context));
-    }
+    },
+    normalizeResult: (result) => normalizeOrderWorkingStatus(result)
   },
   {
     name: "spot_get_history_orders", title: "Get Spot Order History", description: "Get bounded signed spot order history, including completed and cancelled orders.", cliPath: ["spot", "order", "history"],
@@ -759,7 +773,8 @@ export const orderTools: ToolSpec<any>[] = [
     handler: async (input, context) => {
       const query = input as { symbol: string; page?: number; limit?: number; startTime?: number; endTime?: number };
       return context.api.getHistoryOrders({ ...query, symbol: await resolveSpotSymbol(context, query.symbol) }, signed(context));
-    }
+    },
+    normalizeResult: (result) => normalizeOrderWorkingStatus(result)
   },
   {
     name: "spot_get_fills", title: "Get Spot Fills", description: "Get signed spot fills for one symbol.", cliPath: ["spot", "order", "fills"],

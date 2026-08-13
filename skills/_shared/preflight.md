@@ -29,6 +29,7 @@ For a state-changing operation:
 3. Stop. Do not type, pipe, generate, or infer a confirmation. Do not use `--confirm` because it is rejected.
 4. Wait for a new explicit user message. Only after that message, invoke `ai-hub confirm --confirmation-id <id> --user-confirmation <message>` once. Any failure, expiry, or context change consumes the preview and requires a new preview.
 5. Do not automatically retry an uncertain result. Query the relevant order or history endpoint first.
+6. If Core returns `AI_HUB_UNRESOLVED_WRITE_EXISTS`, do not generate another client order ID or slightly rewrite the same request. Query the original identifier shown in the error; matching unresolved writes remain blocked for seven days unless a successful query resolves them.
 
 For a local MCP client, use the same rule: prepare the action, show the exact preview, stop for a new user message, then confirm once. The original instruction, a previous confirmation, silence, and agent-generated text are never confirmation.
 

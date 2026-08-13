@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-order
-version: "0.1.19"
+version: "0.1.20"
 description: Use this Skill when a user asks to retrieve or place supported AI Hub spot or isolated/cross spot-margin orders. Use the local ai-hub CLI with a configured credential profile. Never route to derivatives or accept an explicit leverage multiplier. Every state-changing action requires an exact preview followed by a new manual user confirmation.
 ---
 
@@ -21,13 +21,13 @@ The CLI and MCP resolve a display symbol such as `BTCUSDT` or `BTC/USDT` from th
 
 If AI Hub MCP Tools are available, call the matching read Tool, `spot_prepare_*` Tool, or `margin_prepare_*` Tool directly. Do not read CLI references, run CLI help, or inspect configuration first. After a prepare result, stop for a new user message before `confirm_action`. Use CLI Fast Path only when MCP is unavailable.
 
-Read [../_shared/mcp-routing.md](../_shared/mcp-routing.md) for the shared MCP routing and fallback rules.
+Read [references/mcp-routing.md](references/mcp-routing.md) for the shared MCP routing and fallback rules.
 
 ## Prerequisites
 
-If the selected profile is already configured, run the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error. Confirm that the user has supplied all mandatory order fields.
+If the selected profile is already configured, run the focused command directly. Read [references/preflight.md](references/preflight.md) only for first-time setup, a profile change, or a configuration/credential error. Confirm that the user has supplied all mandatory order fields.
 
-For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Never retry a failed or unknown write until the diagnosis permits it and the user starts a new confirmation flow.
+For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [references/openapi-error-diagnosis.md](references/openapi-error-diagnosis.md). Never retry a failed or unknown write until the diagnosis permits it and the user starts a new confirmation flow.
 
 ## Fast Path
 
@@ -38,7 +38,7 @@ When a read request has its complete command parameters, run it directly. When a
 | Command | Operation | Description |
 | --- | --- | --- |
 | `ai-hub spot order test` | Read-like validation | Validate one order without sending it to the matching engine. |
-| `ai-hub spot order get` | Read | Get one order by symbol and order ID. |
+| `ai-hub spot order get` | Read | Get one order by symbol and exactly one of order ID or client order ID. |
 | `ai-hub spot order open` | Read | List current open orders. |
 | `ai-hub spot order history` | Read | List completed and cancelled orders. |
 | `ai-hub spot order fills` | Read | List fills for one symbol. |

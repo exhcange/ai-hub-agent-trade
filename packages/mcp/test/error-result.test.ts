@@ -36,35 +36,29 @@ test("MCP marks an upstream business failure as an MCP error with diagnosis", ()
   assert.match(String(payload.timestamp), /^\d{4}-\d{2}-\d{2}T/);
 });
 
-test("MCP preserves each Core read result without a dataType wrapper", () => {
+test("MCP wraps each Core read result in the documented dataType envelope", () => {
   const array = [{ symbol: "BTCUSDT" }];
   const object = { bids: [] };
-  assert.equal(formatMcpData(array), array);
-  assert.equal(formatMcpData(object), object);
-  assert.equal(formatMcpData("pong"), "pong");
-  assert.equal(formatMcpData(null), null);
+  assert.deepEqual(formatMcpData(array), { dataType: "array", items: array, count: 1 });
+  assert.deepEqual(formatMcpData(object), { dataType: "object", value: object });
+  assert.deepEqual(formatMcpData("pong"), { dataType: "scalar", value: "pong" });
+  assert.deepEqual(formatMcpData(null), { dataType: "null" });
 });
 
-test("MCP compact reads avoid duplicating structured data in text", () => {
-  const data = formatMcpData([{ symbol: "BTC/USDT" }]);
-  const result = toMcpReadResult(data);
-  assert.deepEqual(result.structuredContent, { ok: true, data });
+test("MCP reads expose identical parseable text and structured content", () => {
+  const source = [{ symbol: "BTC/USDT" }];
+  const result = toMcpReadResult(source);
+  const expected = { ok: true, data: { dataType: "array", items: source, count: 1 } };
+  assert.deepEqual(result.structuredContent, expected);
   const content = result.content[0];
   assert.equal(content?.type, "text");
-  assert.deepEqual(JSON.parse(content?.text ?? "{}"), { ok: true, summary: "Returned 1 items." });
+  assert.deepEqual(JSON.parse(content?.text ?? "{}"), expected);
 });
 
-test("MCP compact balance reads retain only a short count summary in text", () => {
-  const data = formatMcpData({ balances: [{ asset: "USDT" }], count: 1, truncated: false });
-  const result = toMcpReadResult(data);
-  assert.deepEqual(JSON.parse((result.content[0] as { text: string }).text), { ok: true, summary: "Returned 1 balances." });
-  assert.deepEqual(result.structuredContent, { ok: true, data });
-});
-
-test("MCP compat reads preserve the former JSON text payload", () => {
-  const data = formatMcpData([{ symbol: "BTC/USDT" }]);
-  const result = toMcpReadResult(data, "compat");
-  assert.deepEqual(JSON.parse((result.content[0] as { text: string }).text), { ok: true, data });
+test("MCP compat mode uses the same documented read contract", () => {
+  const source = [{ symbol: "BTC/USDT" }];
+  const result = toMcpReadResult(source, "compat");
+  assert.deepEqual(JSON.parse((result.content[0] as { text: string }).text), result.structuredContent);
 });
 
 test("MCP drops schema-declared blank optional strings before Core validation", () => {

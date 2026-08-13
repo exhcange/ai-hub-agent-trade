@@ -124,6 +124,28 @@ test("batch-order Schema declares object items and internal-transfer history rej
   );
 });
 
+test("sub-account asset reads expose and validate the documented account types", () => {
+  const tool = createToolRegistry().byName("sub_account_get_assets");
+  assert.deepEqual((tool.inputSchema.properties?.accountType as { enum?: unknown }).enum, ["1", "2", "3", "4", "5"]);
+  assert.deepEqual(tool.validate({ subUid: "1001", accountType: "1" }), { subUid: "1001", accountType: "1" });
+  assert.deepEqual(tool.validate({ subUid: "1001", accountType: "3", type: "2" }), { subUid: "1001", accountType: "3", type: "2" });
+  assert.throws(
+    () => tool.validate({ subUid: "1001", accountType: "9" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
+});
+
+test("spot order lookup requires exactly one server-supported identifier", () => {
+  const tool = createToolRegistry().byName("spot_get_order");
+  assert.deepEqual(tool.validate({ symbol: "BTCUSDT", orderId: "123" }), { symbol: "BTCUSDT", orderId: "123" });
+  assert.deepEqual(tool.validate({ symbol: "BTCUSDT", newClientOrderId: "agent_123" }), { symbol: "BTCUSDT", newClientOrderId: "agent_123" });
+  assert.throws(() => tool.validate({ symbol: "BTCUSDT" }), (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT");
+  assert.throws(
+    () => tool.validate({ symbol: "BTCUSDT", orderId: "123", newClientOrderId: "agent_123" }),
+    (error: unknown) => error instanceof AiHubError && error.code === "AI_HUB_INVALID_ARGUMENT"
+  );
+});
+
 test("spot order reads and previews use the physical tenant symbol", async () => {
   const registry = createToolRegistry();
   const requested: Array<{ kind: string; symbol?: string }> = [];

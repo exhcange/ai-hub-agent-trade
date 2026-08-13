@@ -1,6 +1,7 @@
 import type { LoadedCredentials } from "../credential.js";
 import type { ResolvedProfile } from "../config.js";
 import type { AiHubSpotApi } from "../openapi.js";
+import type { UnresolvedWriteStore } from "../unresolved-write.js";
 import type { ListLimit, UnpagedListLimit } from "./list-limit.js";
 
 export type ToolOperation = "read" | "write";
@@ -36,6 +37,7 @@ export interface ToolExecutionContext {
   profile: ResolvedProfile;
   credentials?: LoadedCredentials;
   api: AiHubSpotApi;
+  unresolvedWrites?: UnresolvedWriteStore;
 }
 
 export interface ToolSpec<Input = Record<string, unknown>> {

@@ -1,6 +1,6 @@
 # AI Hub Agent Skills
 
-English-language Skills for AI agents that operate supported AI Hub spot-account and isolated/cross spot-margin workflows through the `ai-hub` CLI. Each Skill supplies routing, safety boundaries, and command guidance; the CLI remains the execution interface.
+English-language Skills for AI agents that operate supported AI Hub spot-account and isolated/cross spot-margin workflows through AI Hub MCP or the `ai-hub` CLI. Each Skill supplies routing, safety boundaries, and command guidance; MCP is preferred when available, with CLI as the fallback.
 
 ## Skills
 
@@ -31,7 +31,7 @@ The profile stores the OpenAPI URL, API key, and secret key in `~/.ai-hub/config
 - If the selected profile is already configured, run the focused command directly. Use configuration commands only for first-time setup, a profile change, or a configuration/credential error.
 - Every state-changing command first prints an exact preview and exits. After a new explicit user message, invoke `ai-hub confirm` with the returned confirmation ID and that message.
 - An agent must never fabricate a confirmation or treat the original request as approval. It must stop after the preview and wait for a fresh user decision.
-- Skills do not define MCP tools. A separately installed local MCP client follows the same capability and confirmation rules.
+- Skills route to an installed AI Hub MCP Tool first and use the local CLI only when MCP is unavailable. Both paths follow the same Core capability and confirmation rules.
 
 Read [_shared/preflight.md](_shared/preflight.md) only when setup or a configuration/credential error requires it.
 

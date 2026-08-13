@@ -104,11 +104,18 @@ export class ToolRegistry {
       : normalized;
   }
 
-  public async prepareWrite(name: string, input: unknown, context: ToolExecutionContext, confirmations: ConfirmationPreparer): Promise<PreparedAction> {
+  public async prepareWrite(
+    name: string,
+    input: unknown,
+    context: ToolExecutionContext,
+    confirmations: ConfirmationPreparer,
+    beforePrepare?: (action: string, payload: Record<string, unknown>) => Promise<void>
+  ): Promise<PreparedAction> {
     const tool = this.byName(name);
     if (tool.operation !== "write" || !tool.writeSummary) throw new AiHubError("AI_HUB_TOOL_NOT_WRITE", `Tool "${name}" is not a confirmable write Tool.`);
     const validInput = tool.validate(input);
     const preflightInput = tool.preflight ? await tool.preflight(validInput, context) : validInput;
+    if (beforePrepare) await beforePrepare(tool.name, preflightInput as Record<string, unknown>);
     const prepared = await confirmations.prepare({
       action: tool.name,
       payload: preflightInput,

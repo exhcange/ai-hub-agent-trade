@@ -38,3 +38,16 @@ test("unknown write results explicitly prohibit automatic retry", () => {
   assert.equal(payload.operation_status, "UNKNOWN");
   assert.match(String(payload.action_required), /Do not retry automatically/i);
 });
+
+test("local error details are preserved in the shared envelope", () => {
+  const payload = toAiHubErrorPayload(new AiHubError("AI_HUB_WRITE_RESULT_UNKNOWN", "Unknown.", {
+    writeOutcomeUnknown: true,
+    symbol: "BTCUSDT",
+    newClientOrderId: "agent_123",
+    reconciliationTool: "spot_get_order"
+  }), { requestId: "request-id", now: new Date("2026-08-13T00:00:00.000Z") });
+  assert.equal(payload.writeOutcomeUnknown, true);
+  assert.equal(payload.symbol, "BTCUSDT");
+  assert.equal(payload.newClientOrderId, "agent_123");
+  assert.equal(payload.reconciliationTool, "spot_get_order");
+});

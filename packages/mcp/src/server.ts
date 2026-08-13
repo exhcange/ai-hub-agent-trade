@@ -6,37 +6,19 @@ const CONFIRM_ACTION_TOOL = "confirm_action";
 const SYSTEM_CAPABILITIES_TOOL = "system_get_capabilities";
 const SEMANTIC_INPUT_FIELDS = new Set(["quoteAmount", "baseQuantity", "price", "triggerPrice", "side", "type", "orders", "amount", "address", "fromAccountType", "toAccountType", "isolated", "nonZeroOnly"]);
 
-const ASSET_BALANCE_OUTPUT_SCHEMA: Tool["outputSchema"] = {
+const READ_OUTPUT_SCHEMA: Tool["outputSchema"] = {
   type: "object",
   properties: {
     ok: { type: "boolean" },
     data: {
       type: "object",
       properties: {
-        asset: { type: "string" },
-        available: { type: "string" },
-        frozen: { type: "string" },
-        total: { type: "string" },
-        found: { type: "boolean" }
-      },
-      required: ["asset", "available", "frozen", "total", "found"]
-    }
-  },
-  required: ["ok", "data"]
-};
-
-const BALANCE_LIST_OUTPUT_SCHEMA: Tool["outputSchema"] = {
-  type: "object",
-  properties: {
-    ok: { type: "boolean" },
-    data: {
-      type: "object",
-      properties: {
-        balances: { type: "array" },
+        dataType: { type: "string", enum: ["array", "object", "scalar", "null"] },
+        items: { type: "array" },
         count: { type: "integer", minimum: 0 },
-        truncated: { type: "boolean" }
+        value: {}
       },
-      required: ["balances", "count", "truncated"]
+      required: ["dataType"]
     }
   },
   required: ["ok", "data"]
@@ -66,34 +48,21 @@ function writeTiming(timing: RequestTiming): void {
   process.stderr.write(`${JSON.stringify(timing)}\n`);
 }
 
-function compactReadText(data: unknown): string {
-  let summary = "Result available in structuredContent.";
-  if (Array.isArray(data)) summary = `Returned ${data.length} items.`;
-  else if (data && typeof data === "object") {
-    const value = data as Record<string, unknown>;
-    if (Array.isArray(value.balances) && typeof value.count === "number") {
-      summary = `Returned ${value.count} balances${value.truncated === true ? "; more results were truncated." : "."}`;
-    } else if (typeof value.count === "number") {
-      summary = `Returned ${value.count} items.`;
-    } else if (Array.isArray(value.items)) {
-      summary = `Returned ${value.items.length} items.`;
-    }
-  }
-  return JSON.stringify({ ok: true, summary });
-}
-
-/** Read payloads retain their native compact Core shape in structured content. */
-export function toMcpReadResult(data: unknown, responseMode: McpResponseMode = DEFAULT_MCP_RESPONSE_MODE): CallToolResult {
-  const payload = { ok: true, data };
+/** Read text and structuredContent intentionally share one parseable envelope. */
+export function toMcpReadResult(data: unknown, _responseMode: McpResponseMode = DEFAULT_MCP_RESPONSE_MODE): CallToolResult {
+  const payload = { ok: true, data: formatMcpData(data) };
   return {
-    content: [{ type: "text", text: responseMode === "compat" ? JSON.stringify(payload) : compactReadText(data) }],
+    content: [{ type: "text", text: JSON.stringify(payload) }],
     structuredContent: payload
   };
 }
 
-/** Compatibility export: MCP no longer wraps native Core results in a dataType envelope. */
+/** Stable discriminated read envelope used by every MCP read Tool. */
 export function formatMcpData(data: unknown): unknown {
-  return data;
+  if (Array.isArray(data)) return { dataType: "array", items: data, count: data.length };
+  if (data === null) return { dataType: "null" };
+  if (typeof data === "object") return { dataType: "object", value: data };
+  return { dataType: "scalar", value: data };
 }
 
 export function toMcpErrorResult(error: unknown, requestId?: string): CallToolResult {
@@ -101,10 +70,8 @@ export function toMcpErrorResult(error: unknown, requestId?: string): CallToolRe
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, ...payload }) }] };
 }
 
-function outputSchemaFor(tool: ToolSpec): Tool["outputSchema"] | undefined {
-  if (tool.name === "account_get_asset_balance") return ASSET_BALANCE_OUTPUT_SCHEMA;
-  if (tool.name === "account_list_balances") return BALANCE_LIST_OUTPUT_SCHEMA;
-  return undefined;
+function outputSchemaFor(_tool: ToolSpec): Tool["outputSchema"] {
+  return READ_OUTPUT_SCHEMA;
 }
 
 function compactDescription(description: string): string {
@@ -185,7 +152,7 @@ function toMcpTool(tool: ToolSpec): Tool {
     title: tool.title,
     description: compactDescription(routing ? `${tool.description} ${routing}` : tool.description),
     inputSchema: compactInputSchema(tool),
-    ...(outputSchemaFor(tool) ? { outputSchema: outputSchemaFor(tool) } : {}),
+    outputSchema: outputSchemaFor(tool),
     annotations: {
       readOnlyHint: tool.operation === "read",
       destructiveHint: tool.riskLevel === "high",
@@ -201,8 +168,9 @@ function prepareToolName(tool: ToolSpec): string {
 }
 
 function toPrepareMcpTool(tool: ToolSpec): Tool {
+  const { outputSchema: _readOutputSchema, ...base } = toMcpTool(tool);
   return {
-    ...toMcpTool(tool),
+    ...base,
     name: prepareToolName(tool),
     title: `Prepare ${tool.title}`,
     description: compactDescription(writeDescription(tool)),
@@ -213,7 +181,8 @@ function toPrepareMcpTool(tool: ToolSpec): Tool {
 function systemCapabilitiesTool(): Tool {
   return {
     name: SYSTEM_CAPABILITIES_TOOL,
-    inputSchema: { type: "object" }
+    inputSchema: { type: "object" },
+    outputSchema: READ_OUTPUT_SCHEMA
   };
 }
 
@@ -252,7 +221,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
     { name: "ai-hub-agent-trade", version: AI_HUB_RELEASE_VERSION },
     {
       capabilities: { tools: {} },
-      instructions: `Use structuredContent for reads. ${mcpRoutingInstructions()} Prepare tools only preview and require a new user confirmation before confirm_action.`
+      instructions: `Read results use the same discriminated JSON envelope in content.text and structuredContent. ${mcpRoutingInstructions()} Prepare tools only preview and require a new user confirmation before confirm_action.`
     }
   );
 

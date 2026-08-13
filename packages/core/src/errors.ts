@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 
 export class AiHubError extends Error {
   public readonly code: string;
+  public readonly details?: Record<string, unknown>;
 
-  public constructor(code: string, message: string) {
+  public constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "AiHubError";
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -57,7 +59,7 @@ function localErrorCategory(code: string): AiHubErrorCategory {
   if (code === "AI_HUB_INVALID_CREDENTIAL") return "AUTHENTICATION";
   if (code.includes("CREDENTIAL")) return "CONFIGURATION";
   if (code.includes("PROFILE") || code.includes("CONFIG") || code.includes("OPENAPI_URL")) return "CONFIGURATION";
-  if (code.includes("CONFIRMATION") || code === "AI_HUB_WRITE_RESULT_UNKNOWN") return "CONFIRMATION";
+  if (code.includes("CONFIRMATION") || code === "AI_HUB_WRITE_RESULT_UNKNOWN" || code === "AI_HUB_UNRESOLVED_WRITE_EXISTS") return "CONFIRMATION";
   if (code.includes("NOT_FOUND") || code === "AI_HUB_ASSET_NOT_MAPPED") return "NOT_FOUND";
   if (code.includes("NETWORK") || code.includes("HTTP") || code.includes("REDIRECT") || code.includes("INVALID_RESPONSE")) return "UPSTREAM_NETWORK";
   if (code.includes("PERMISSION") || code.includes("AUTHORIZATION")) return "AUTHORIZATION";
@@ -68,6 +70,7 @@ function localErrorCategory(code: string): AiHubErrorCategory {
 
 function localActionRequired(code: string): string {
   if (code === "AI_HUB_WRITE_RESULT_UNKNOWN") return "Query the affected order or history record before taking another action. Do not retry automatically.";
+  if (code === "AI_HUB_UNRESOLVED_WRITE_EXISTS") return "Resolve the earlier matching write by querying its original identifier before creating another preview.";
   if (code.includes("CONFIRMATION")) return "Create a new preview when necessary and provide a new explicit user confirmation before execution.";
   if (code.includes("CREDENTIAL") || code.includes("PROFILE") || code.includes("CONFIG")) return "Correct the selected local profile or credentials before retrying.";
   if (code.includes("NOT_FOUND") || code === "AI_HUB_ASSET_NOT_MAPPED") return "Verify the requested identifier against the available tenant data before retrying.";
@@ -121,6 +124,7 @@ export function toAiHubErrorPayload(error: unknown, options: AiHubErrorPayloadOp
     action_required: localActionRequired(code),
     operation_status: operationStatus(error, code),
     timestamp,
-    code
+    code,
+    ...(error instanceof AiHubError && error.details ? error.details : {})
   };
 }

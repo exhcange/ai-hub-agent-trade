@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-sub-account
-version: "0.1.19"
+version: "0.1.20"
 description: Use this Skill when a user asks to list, inspect, create, configure, or transfer assets for supported AI Hub sub-accounts, including sub-account assets, API-key IP lists, and transfer histories. Use the local ai-hub CLI with a configured credential profile. Every state-changing sub-account action requires an exact preview and a new manual user confirmation.
 ---
 
@@ -12,17 +12,17 @@ Use this Skill for supported sub-account operations only. Do not assume a sub-ac
 
 If AI Hub MCP Tools are available, call the matching `sub_account_*` Tool directly. For writes, use only `sub_prepare_*`, then stop for a new user message before `confirm_action`. Do not read CLI references, run CLI help, or inspect configuration first. Use CLI Fast Path only when MCP is unavailable.
 
-Read [../_shared/mcp-routing.md](../_shared/mcp-routing.md) for the shared MCP/CLI fallback boundary.
+Read [references/mcp-routing.md](references/mcp-routing.md) for the shared MCP/CLI fallback boundary.
 
 ## Prerequisites
 
-If the selected profile is already configured, run the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error.
+If the selected profile is already configured, run the focused command directly. Read [references/preflight.md](references/preflight.md) only for first-time setup, a profile change, or a configuration/credential error.
 
 ## Fast Path
 
 Run an exact read command immediately when its required parameters are present. For a complete write request, generate one preview and wait for a new confirmation. Load references only for incomplete, ambiguous, setup, or error cases.
 
-For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Do not substitute a different sub-account identifier or credential without a user decision.
+For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [references/openapi-error-diagnosis.md](references/openapi-error-diagnosis.md). Do not substitute a different sub-account identifier or credential without a user decision.
 
 ## Command Index
 

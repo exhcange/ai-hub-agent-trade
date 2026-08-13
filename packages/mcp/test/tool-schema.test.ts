@@ -36,11 +36,12 @@ for (const toolset of ["default", "full"] as const) {
           assert.equal(tools.some((item) => item.name === tool.name), false, `${tool.name} must not be exposed directly`);
         }
       }
-      const balance = tools.find((tool) => tool.name === "account_get_asset_balance");
       const balances = tools.find((tool) => tool.name === "account_list_balances");
-      assert.ok(balance?.outputSchema);
-      assert.ok(balances?.outputSchema);
-      assert.equal(tools.find((tool) => tool.name === "market_get_ticker")?.outputSchema, undefined);
+      for (const tool of registryTools.filter((item) => item.operation === "read")) {
+        const output = tools.find((item) => item.name === tool.name)?.outputSchema;
+        assert.ok(output, `${tool.name} must expose the shared read output schema`);
+      }
+      assert.ok(tools.find((tool) => tool.name === "system_get_capabilities")?.outputSchema);
       assert.equal("oneOf" in (tools.find((tool) => tool.name === "market_get_ticker")?.inputSchema ?? {}), false);
       assert.equal((balances?.inputSchema.properties?.nonZeroOnly as { default?: unknown } | undefined)?.default, true);
       const prepare = tools.find((tool) => tool.name === "spot_prepare_market_buy");

@@ -8,6 +8,7 @@ Every CLI and MCP failure includes `request_id`, `error_category`, `error_code`,
 2. Preserve `upstreamCode` and `upstreamMessage` for troubleshooting.
 3. Retry only when `retryable` is `true`; if `retry_after` is not null, wait at least that long. Never retry a state-changing action automatically.
 4. If `operation_status` is `UNKNOWN` or `writeOutcomeUnknown` is `true`, query the affected order or history record before any new action.
+   For a spot order, use the returned `symbol` and `newClientOrderId` with `spot_get_order` or `ai-hub spot order get`. Core performs one immediate read-only reconciliation after a network-interrupted submission; if the outcome remains unknown, it retains the unresolved business request locally for seven days and blocks a matching new preview. Do not bypass that block or change the client order ID to force a retry.
 5. Include the returned `request_id` when reporting or correlating an error. Do not generate a replacement ID.
 6. If `reason` is `UNKNOWN_UPSTREAM_CODE`, report the raw code and message and do not invent a cause.
 

@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-common
-version: "0.1.19"
+version: "0.1.20"
 description: Use this Skill when a user asks for AI Hub public spot market data, including connection status, server time, symbols, ticker data, order-book depth, recent trades, or candlesticks. Use the local ai-hub CLI, require no credentials for these commands, and route account or state-changing requests to the focused Skill.
 ---
 
@@ -12,11 +12,11 @@ Use this Skill for public spot market information. All commands in this Skill ar
 
 If AI Hub MCP Tools are available, call the matching `market_*` Tool directly. Do not read CLI references, run CLI help, or inspect configuration first. Use CLI Fast Path only when MCP is unavailable.
 
-For normal market questions, follow [../_shared/mcp-routing.md](../_shared/mcp-routing.md): use summary Tools unless raw fields are explicitly requested.
+For normal market questions, follow [references/mcp-routing.md](references/mcp-routing.md): use summary Tools unless raw fields are explicitly requested.
 
 ## Prerequisites
 
-Run public commands directly with the configured default profile. Read [../_shared/preflight.md](../_shared/preflight.md) only if the request expands to authenticated work and the CLI reports a profile or credential error.
+Run public commands directly with the configured default profile. Read [references/preflight.md](references/preflight.md) only if the request expands to authenticated work and the CLI reports a profile or credential error.
 
 ## Fast Path
 
@@ -54,6 +54,6 @@ For a complete public-market request, run the exact CLI command immediately. Do 
 
 `symbol-info` exposes the OpenAPI-advertised `marketBuyMin` (minimum quote-asset amount for MARKET or STOP_MARKET BUY) and `marketSellMin` (minimum base-asset quantity for MARKET or STOP_MARKET SELL). A missing or zero value means the client defers that minimum check to OpenAPI.
 
-If a public endpoint returns `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md). Use its `reason` and `suggestedAction`; do not infer a cause from the code alone.
+If a public endpoint returns `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [references/openapi-error-diagnosis.md](references/openapi-error-diagnosis.md). Use its `reason` and `suggestedAction`; do not infer a cause from the code alone.
 
 Only read [references/market-commands.md](references/market-commands.md) when Fast Path does not apply.

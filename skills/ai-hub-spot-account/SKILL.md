@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot-account
-version: "0.1.19"
+version: "0.1.20"
 description: Use this Skill when a user asks for one configured AI Hub spot-asset balance or a non-zero spot balance overview. Prefer AI Hub MCP Tools; use the local ai-hub CLI only when MCP is unavailable.
 ---
 
@@ -12,13 +12,13 @@ Use this Skill for one configured spot-asset balance or a bounded non-zero spot 
 
 If AI Hub MCP Tools are available, call `account_get_asset_balance` for one named asset and `account_list_balances` when no asset is named. Do not read this reference, run CLI help, or inspect configuration first. Use CLI only when MCP is unavailable.
 
-Read [../_shared/mcp-routing.md](../_shared/mcp-routing.md) for the shared MCP/CLI fallback boundary.
+Read [references/mcp-routing.md](references/mcp-routing.md) for the shared MCP/CLI fallback boundary.
 
 ## Prerequisites
 
-If the selected profile is already configured, run the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error.
+If the selected profile is already configured, run the focused command directly. Read [references/preflight.md](references/preflight.md) only for first-time setup, a profile change, or a configuration/credential error.
 
-For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md) before proposing a retry or alternative action.
+For `AI_HUB_OPENAPI_BUSINESS_ERROR`, read [references/openapi-error-diagnosis.md](references/openapi-error-diagnosis.md) before proposing a retry or alternative action.
 
 ## Fast Path
 

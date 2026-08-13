@@ -1,6 +1,6 @@
 ---
 name: ai-hub-spot
-version: "0.1.19"
+version: "0.1.20"
 description: Use this Skill for supported AI Hub spot-market, isolated or cross spot-margin, account, order, wallet, or sub-account requests. Prefer the matching AI Hub MCP Tool; use the local ai-hub CLI only when MCP is unavailable. Enforce the preview and new-user-confirmation boundary for every state-changing operation. Do not use for derivatives or unsupported capabilities.
 ---
 
@@ -14,13 +14,13 @@ AI Hub margin means isolated or cross **spot margin only**. Never offer perpetua
 
 When AI Hub MCP Tools are available, call the exact matching MCP Tool immediately. Do not load a focused Skill, CLI reference, `ai-hub --help`, or `config show` first. For writes, call only the matching `prepare_*` Tool, then stop for a new user message before `confirm_action`.
 
-Read [../_shared/mcp-routing.md](../_shared/mcp-routing.md) for the shared direct MCP selection rules.
+Read [references/mcp-routing.md](references/mcp-routing.md) for the shared direct MCP selection rules.
 
 When MCP is unavailable, use the focused CLI command through its Fast Path. Load a reference only for setup, missing or ambiguous parameters, or an API error.
 
 ## Prerequisites
 
-When the selected profile is already configured, execute the focused command directly. Read [../_shared/preflight.md](../_shared/preflight.md) only for first-time setup, a profile change, or a configuration/credential error. Public market requests can use the common Skill directly.
+When the selected profile is already configured, execute the focused command directly. Read [references/preflight.md](references/preflight.md) only for first-time setup, a profile change, or a configuration/credential error. Public market requests can use the common Skill directly.
 
 ## Fast Path
 
@@ -43,7 +43,7 @@ Execute read-only MCP Tools directly when available. For every state-changing MC
 
 ## Business Failures
 
-If a command returns `AI_HUB_OPENAPI_BUSINESS_ERROR`, treat it as a failed operation. Read [../_shared/openapi-error-diagnosis.md](../_shared/openapi-error-diagnosis.md), follow the returned `suggestedAction`, and preserve the upstream code and message.
+If a command returns `AI_HUB_OPENAPI_BUSINESS_ERROR`, treat it as a failed operation. Read [references/openapi-error-diagnosis.md](references/openapi-error-diagnosis.md), follow the returned `suggestedAction`, and preserve the upstream code and message.
 
 ## Configuration
 

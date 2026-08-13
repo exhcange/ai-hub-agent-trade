@@ -187,7 +187,7 @@ export class AiHubSpotApi {
     return this.request("GET", "/sapi/v1/account", {}, undefined, credentials);
   }
 
-  public getOrder(params: { symbol: string; orderId: string; newClientOrderId?: string }, credentials: ApiCredentials): Promise<unknown> {
+  public getOrder(params: { symbol: string; orderId?: string; newClientOrderId?: string }, credentials: ApiCredentials): Promise<unknown> {
     return this.request("GET", "/sapi/v2/order", params, undefined, credentials);
   }
 

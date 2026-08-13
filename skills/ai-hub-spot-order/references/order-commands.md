@@ -7,7 +7,7 @@ Margin commands are isolated or cross **spot margin only**. They do not support 
 | Command | Required options | Optional options |
 | --- | --- | --- |
 | `ai-hub spot order test` | `--symbol`, `--side`, `--type`, plus `--quote-amount` for `MARKET`/`STOP_MARKET` BUY or `--base-quantity` otherwise | `--price` for `LIMIT`/`IOC`/`FOK`/`POST_ONLY`/`STOP`, `--trigger-price` for `STOP`/`STOP_MARKET`, `--new-client-order-id`, `--recv-window`, `--profile` |
-| `ai-hub spot order get` | `--symbol`, `--order-id` | `--new-client-order-id`, `--profile` |
+| `ai-hub spot order get` | `--symbol`, plus exactly one of `--order-id` or `--new-client-order-id` | `--profile` |
 | `ai-hub spot order open` | None | `--symbol`, `--limit` (1–50), `--profile` |
 | `ai-hub spot order history` | `--symbol` | `--page`, `--limit` (1–50), `--start-time`, `--end-time`, `--profile` |
 | `ai-hub spot order fills` | `--symbol` | `--limit` (1–50), `--from-id`, `--profile` |
@@ -36,6 +36,7 @@ Examples:
 
 ```bash
 ai-hub spot order test --symbol BTCUSDT --side BUY --type LIMIT --base-quantity 0.001 --price 60000
+ai-hub spot order get --symbol BTCUSDT --new-client-order-id agent_example
 ai-hub spot order open --symbol BTCUSDT --limit 20
 ai-hub spot order history --symbol BTCUSDT --limit 20
 ai-hub spot order fills --symbol BTCUSDT --limit 50

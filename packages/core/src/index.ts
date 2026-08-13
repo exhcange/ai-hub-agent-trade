@@ -3,6 +3,7 @@ export { AI_HUB_RELEASE_VERSION, AI_HUB_USER_AGENT } from "./release.js";
 export { loadStoredCredentials, validateApiCredentials, type ApiCredentials, type LoadedCredentials } from "./credential.js";
 export { ConfirmationService, FileConfirmationStore, type ConfirmationPreparer, type ConfirmationStore, type ConfirmedAction, type ExecutionContext, type PrepareActionInput, type PreparedAction } from "./confirmation.js";
 export { auditDirectory, FileAuditLogger, type AuditLogger, type AuditRecord } from "./audit-log.js";
+export { FileUnresolvedWriteStore, MemoryUnresolvedWriteStore, unresolvedBusinessRequestHash, unresolvedWriteDirectory, type UnresolvedWriteRecord, type UnresolvedWriteStore } from "./unresolved-write.js";
 export { AiHubSpotApi, signRequest, type ApiClientOptions, type SpotCancelOrderParams, type SpotKlinesParams, type SpotOrderType, type SpotPlaceOrderParams } from "./openapi.js";
 export { diagnoseOpenApiBusinessError } from "./openapi-error-catalog.js";
 export { createToolRegistry, ToolRegistry, type ToolCapability, type ToolListOptions } from "./tools/tool-registry.js";

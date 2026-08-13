@@ -1,6 +1,6 @@
 # AI Hub Agent Trade MCP
 
-Install with `npm install -g @aihubspot/agent-trade-mcp`, then start `ai-hub-trade-mcp --profile default`. Both `default` and `full` expose every supported Core capability; the names remain only for configuration compatibility. Read responses use compact text by default; use `--response-mode compat` only for clients that require legacy text JSON.
+Install with `npm install -g @aihubspot/agent-trade-mcp`, then start `ai-hub-trade-mcp --profile default`. Both `default` and `full` expose every supported Core capability; the names remain only for configuration compatibility. Read responses use one stable parseable envelope in both MCP text and structured content.
 
 This package provides a local stdio MCP server. State-changing operations require a preview and a new explicit user confirmation.
 
@@ -64,7 +64,7 @@ Margin Tools support isolated and cross **spot margin only**. They do not suppor
 
 ## Read response
 
-All reads use `{ "ok": true, "data": <native compact Core result> }` in `structuredContent`. In `compact` mode, text contains only a short count or availability summary, avoiding duplicate result JSON. `compat` retains the complete JSON text envelope for older clients. Only the two frequent balance tools include explicit output schemas; other results remain native to their focused Core Tool.
+Every read returns the same JSON object in `content.text` and `structuredContent`. Inspect `data.dataType`: arrays use `items` plus `count`, objects and scalars use `value`, and null uses `dataType: "null"`. Every read Tool publishes this output schema. `--response-mode` remains accepted for setup compatibility, but no longer changes the success envelope.
 
 ## Bounded market analysis
 

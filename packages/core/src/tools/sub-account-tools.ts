@@ -37,6 +37,19 @@ function internalTransferDirection(value: Record<string, unknown>): string {
   return type;
 }
 
+function subAccountAssetAccountType(value: Record<string, unknown>): string {
+  const accountType = requiredString(value, "accountType");
+  if (!["1", "2", "3", "4", "5"].includes(accountType)) {
+    throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "accountType must be 1 (Spot), 2 (isolated margin), 3 (cross margin), 4 (C2C), or 5 (derivatives).");
+  }
+  return accountType;
+}
+
+function subAccountAssetFilterType(value: Record<string, unknown>): string | undefined {
+  const type = optionalString(value, "type");
+  return type;
+}
+
 async function resolveTenantIdentifiers(
   input: Record<string, unknown>,
   context: Parameters<ToolSpec["handler"]>[1],
@@ -84,9 +97,13 @@ export const subAccountTools: ToolSpec<any>[] = [
   },
   {
     name: "sub_account_get_assets", title: "Get Sub-account Assets", description: "Query sub-account assets by account type.", cliPath: ["sub-account", "assets"], module: "spot-sub-account", access: "signed", operation: "read", riskLevel: "low",
-    inputSchema: { type: "object", properties: { subUid: { type: "string" }, accountType: { type: "string" }, type: { type: "string" } }, required: ["subUid", "accountType"], additionalProperties: false }, errorCodes: signedReadErrors,
+    inputSchema: { type: "object", properties: { subUid: { type: "string" }, accountType: { type: "string", enum: ["1", "2", "3", "4", "5"], description: "Account type: 1 Spot, 2 isolated margin, 3 cross margin, 4 C2C, 5 derivatives." }, type: { type: "string", default: "1", description: "Optional server-side balance filter. Omit for the OpenAPI default 1, which filters zero balances; other server-supported values return all rows." } }, required: ["subUid", "accountType"], additionalProperties: false }, errorCodes: signedReadErrors,
     unpagedListLimit: { path: ["data", "accountList"] },
-    validate: (input) => fields(input, ["subUid", "accountType", "type"], ["subUid", "accountType"]), handler: (input, context) => context.api.signedPost("/sapi/v1/sub_user/asset/account", input as Record<string, unknown>, signed(context))
+    validate: (input) => {
+      const value = strictObject(input, ["subUid", "accountType", "type"]);
+      const type = subAccountAssetFilterType(value);
+      return { subUid: requiredString(value, "subUid"), accountType: subAccountAssetAccountType(value), ...(type ? { type } : {}) };
+    }, handler: (input, context) => context.api.signedPost("/sapi/v1/sub_user/asset/account", input as Record<string, unknown>, signed(context))
   },
   {
     name: "sub_account_root_transfer", title: "Transfer Between Root and Sub-account", description: "Transfer assets between a root and sub-account after confirmation.", cliPath: ["sub-account", "root-transfer"], module: "spot-sub-account", access: "signed", operation: "write", riskLevel: "high",
