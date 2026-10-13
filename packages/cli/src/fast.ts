@@ -54,20 +54,40 @@ function requestArguments(args: readonly string[]): string[] {
 }
 
 async function executeFastRoute(route: AiHubFastRoute, profile: string | undefined): Promise<unknown> {
-  const context = await createToolExecutionContext(profile);
+  if (route.kind === "dual-balances") {
+    const reads = await Promise.allSettled([
+      createToolExecutionContext("spot").then((context) => createToolRegistry().execute(route.input.asset ? "account_get_asset_balance" : "account_list_balances", route.input, context, { readOnly: true })),
+      createToolExecutionContext("futures").then((context) => createToolRegistry().execute("futures_assets", route.input, context, { readOnly: true }))
+    ]);
+    if (reads.every((result) => result.status === "rejected")) throw new AiHubError("AI_HUB_BALANCE_QUERY_FAILED", "Both account queries failed; no balance result is available.");
+    return { complete: reads.every((r) => r.status === "fulfilled"), accountPairing: "not_verified", ...Object.fromEntries(reads.map((r, index) => [index === 0 ? "spot" : "futures", r.status === "fulfilled" ? { ok: true, data: r.value } : { ok: false, message: "Account query failed; balance is not zero." }])) };
+  }
+  const selected = route.kind === "futures-assets" ? "futures" : "spot";
+  if (profile && profile !== selected) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", `This product route requires profile ${selected}.`);
+  const context = await createToolExecutionContext(selected);
   return createToolRegistry().execute(route.toolName, route.input, context, { readOnly: true });
 }
 
 export function codexAgentArguments(prompt: string, profile: string | undefined): string[] {
-  const mcpArgs = [...(profile ? ["--profile", profile] : []), "--toolset", "default", "--response-mode", "compact"];
+  const transfer = /划转|\btransfer\b/i.test(prompt);
+  const explicitFutures = /合约|永续|\bfutures\b|\bperpetuals?\b/i.test(prompt);
+  const dualBalances = !transfer && !explicitFutures && !/现货|\bspot\b/i.test(prompt) && /余额|资产|\bbalances?\b|\bassets?\b/i.test(prompt);
+  const selectedProfile = !transfer && explicitFutures ? "futures" : "spot";
+  if (profile && profile !== selectedProfile) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", `This product route requires profile ${selectedProfile}.`);
+  const mcpArgs = ["--profile", selectedProfile, "--toolset", "default", "--response-mode", "compact"];
   const skillNames = ["ai-hub-spot", "ai-hub-spot-account", "ai-hub-spot-common", "ai-hub-spot-deposit-withdraw", "ai-hub-spot-order", "ai-hub-spot-sub-account"];
   const disabledSkills = skillNames
     .map((name) => `{ path = ${JSON.stringify(join(homedir(), ".agents", "skills", name, "SKILL.md"))}, enabled = false }`)
     .join(", ");
+  const extraServer = dualBalances ? [
+    "-c", `mcp_servers.aihub_futures.command=${JSON.stringify("ai-hub-trade-mcp")}`,
+    "-c", `mcp_servers.aihub_futures.args=${JSON.stringify(["--profile", "futures", "--read-only", "--response-mode", "compact"])}`
+  ] : [];
   const agentPrompt = [
     "Use only the configured AI Hub MCP server \"aihub\".",
+    ...(dualBalances ? ["The additional aihub_futures server is allowed for Futures reads. Query spot via aihub and futures via aihub_futures; show components separately without arithmetic totals. One-side failure means incomplete results, never zero balance."] : []),
     "Do not read Skills, call any CLI or shell command, use web search, or use non-AIHub tools.",
-    "AI Hub margin means isolated or cross spot margin only. Never offer perpetuals or other non-spot products. Explicit leverage multipliers such as 10x are unsupported; explain that boundary and request the supported spot-margin fields instead.",
+    "Spot-margin tools support spot margin only; route explicit Futures requests to Futures product tools. Never send a Futures request through spot tools. Transfers use the spot profile. If the configured server lacks the requested product, report the configuration gap.",
     "For every spot-margin write, require the user to explicitly choose isolated or cross margin; never infer it.",
     "For writes, call only a prepare tool, show the preview, and stop. Never call confirm_action until a new user message explicitly confirms that exact preview.",
     `User request: ${prompt}`
@@ -88,6 +108,7 @@ export function codexAgentArguments(prompt: string, profile: string | undefined)
     "-c", `mcp_servers.aihub.command=${JSON.stringify("ai-hub-trade-mcp")}`,
     "-c", `mcp_servers.aihub.args=${JSON.stringify(mcpArgs)}`,
     "-c", "mcp_servers.aihub.required=true",
+    ...extraServer,
     agentPrompt
   ];
 }

@@ -24,7 +24,7 @@ for (const toolset of ["default", "full"] as const) {
   test(`${toolset} MCP exposes every Registry capability and only prepare forms for writes`, async () => {
     const { client, server, tools } = await listTools(toolset);
     try {
-      const registryTools = createToolRegistry().list();
+      const registryTools = createToolRegistry().list({ product: "spot" });
       assert.equal(tools.length, registryTools.length + 2, "system_get_capabilities and confirm_action are the non-Registry MCP tools");
       assert.ok(tools.some((tool) => tool.name === "system_get_capabilities"));
       assert.ok(tools.some((tool) => tool.name === "confirm_action"));
@@ -78,5 +78,22 @@ test("read-only MCP removes every prepared write and confirmation", async () => 
   } finally {
     await client.close();
     await server.close();
+  }
+});
+
+test("Futures sessions expose only Futures reads and prepare forms, respecting read-only mode", async () => {
+  for (const readOnly of [false, true]) {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createServer("futures", readOnly, "default", "compact", "futures");
+    const client = new Client({ name: "futures-schema", version: "1" });
+    try {
+      await server.connect(serverTransport); await client.connect(clientTransport);
+      const { tools } = await client.listTools();
+      assert.ok(tools.some((t) => t.name === "futures_assets"));
+      assert.equal(tools.some((t) => t.name === "account_list_balances"), false);
+      assert.equal(tools.some((t) => t.name === "futures_place_order"), false);
+      assert.equal(tools.some((t) => t.name === "futures_prepare_place_order"), !readOnly);
+      assert.equal(tools.some((t) => t.name === "confirm_action"), !readOnly);
+    } finally { await client.close(); await server.close(); }
   }
 });

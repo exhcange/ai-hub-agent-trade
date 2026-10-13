@@ -40,7 +40,7 @@ async function assertSelfContainedSkills(directory) {
         throw new Error(`${skillPath} references missing or external Markdown: ${match[1]}.`);
       }
     }
-    for (const name of sharedReferenceNames) {
+    for (const name of entry.name.startsWith("ai-hub-futures") ? [] : sharedReferenceNames) {
       const copied = await readFile(join(skillRoot, "references", name), "utf8");
       if (copied !== shared[name]) throw new Error(`${skillRoot}/references/${name} does not match _shared/${name}.`);
     }

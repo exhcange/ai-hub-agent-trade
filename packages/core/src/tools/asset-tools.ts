@@ -1,9 +1,10 @@
+import { FuturesWriteState } from "../futures/write-state.js";
 import { AiHubError } from "../errors.js";
 import type { ToolSpec } from "./tool-spec.js";
 import { optionalPositiveInteger, positiveDecimal, signed, signedReadErrors, writeErrors } from "./tool-utils.js";
 import { optionalString, requiredString, strictObject } from "./validation.js";
 import { STANDARD_PAGE_SIZE, listLimitSchema, normalizedListLimit } from "./list-limit.js";
-import { resolveTenantAsset, resolveTenantSymbol } from "./symbol-rules.js";
+import { isAtLeastDecimal, resolveTenantAsset, resolveTenantSymbol } from "./symbol-rules.js";
 
 const ACCOUNT_TYPES = ["1", "2", "3", "4", "5"] as const;
 const ACCOUNT_TYPE_NAMES: Readonly<Record<(typeof ACCOUNT_TYPES)[number], string>> = {
@@ -62,6 +63,13 @@ function transferQuery(input: unknown): Record<string, unknown> {
   return { fromAccountType, toAccountType, page: optionalPositiveInteger(value, "page", 1), pageSize: normalizedListLimit(value, STANDARD_PAGE_SIZE), ...(symbol ? { symbol } : {}), ...(optionalString(value, "coinSymbol") ? { coinSymbol: optionalString(value, "coinSymbol") } : {}) };
 }
 
+function transferView(value: unknown): unknown {
+  const fields = new Set(["code", "data", "records", "accountList", "pages", "count", "pageSize", "page", "time", "coinSymbol", "coinSymbolName", "amount", "fromAccount", "toAccount", "symbol", "totalBalance", "normalBalance", "canTransferBalance", "transferId", "id", "status"]);
+  if (Array.isArray(value)) return value.map(transferView);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key]) => fields.has(key)).map(([key, item]) => [key, transferView(item)]));
+}
+
 function withAccountTypeMetadata(response: unknown, value: string): Record<string, unknown> {
   const metadata = { accountType: value, accountTypeName: accountTypeName(value) };
   if (response && typeof response === "object" && !Array.isArray(response)) return { ...(response as Record<string, unknown>), ...metadata };
@@ -99,15 +107,25 @@ async function resolveTenantIdentifiers(
  * strips the local field before signing/sending the request.
  */
 async function resolveUniversalTransfer(input: Record<string, unknown>, context: Parameters<ToolSpec["handler"]>[1]): Promise<Record<string, unknown>> {
-  return {
-    ...(await resolveTenantIdentifiers(input, context, "pair", "write")),
-    displayCoinSymbol: input.coinSymbol
-  };
+  const futures = input.fromAccountType === "5" || input.toAccountType === "5";
+  if (futures) {
+    if (context.profile.name !== "spot" || !context.profile.accountPairing) throw new AiHubError("AI_HUB_ACCOUNT_PAIRING_REQUIRED", "Verify and bind the spot/Futures profiles before transferring.");
+    await (context.futuresWrites ?? new FuturesWriteState()).assertClear(`${context.profile.name}|${context.profile.openApiBaseUrl}|transfer`);
+  }
+  const resolved = await resolveTenantIdentifiers(input, context, "pair", "write");
+  if (!futures) return { ...resolved, displayCoinSymbol: input.coinSymbol };
+  const response = await context.api.signedPost("/sapi/v1/asset/account/by_type", { accountType: input.fromAccountType }, signed(context)) as { data?: { accountList?: Record<string, unknown>[] } };
+  const rows = response?.data?.accountList;
+  if (!Array.isArray(rows)) throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "Transferable asset list is unavailable.");
+  const found = rows.filter((row) => row.coinSymbol === resolved.coinSymbol);
+  const available = found.length === 1 ? found[0]!.canTransferBalance : undefined;
+  if (typeof available !== "string" || !/^\d+(?:\.\d+)?$/.test(available)) throw new AiHubError("AI_HUB_OPENAPI_INVALID_RESPONSE", "An exact transferable balance is required.");
+  if (!isAtLeastDecimal(available, String(input.amount))) throw new AiHubError("AI_HUB_INSUFFICIENT_BALANCE", "Amount exceeds the source account's transferable balance.");
+  return { ...resolved, displayCoinSymbol: input.displayCoinSymbol ?? input.coinSymbol, _transferableBalance: available, _balanceFetchedAt: new Date().toISOString() };
 }
 
 function universalTransferBody(input: Record<string, unknown>): Record<string, unknown> {
-  const { displayCoinSymbol: _displayCoinSymbol, ...body } = input;
-  return body;
+  return Object.fromEntries(Object.entries(input).filter(([key]) => key !== "displayCoinSymbol" && !key.startsWith("_")));
 }
 
 export const assetTools: ToolSpec<any>[] = [
@@ -116,13 +134,22 @@ export const assetTools: ToolSpec<any>[] = [
     inputSchema: { type: "object", properties: { fromAccountType: accountTypeSchema, toAccountType: accountTypeSchema, symbol: { type: "string", description: "Required isolated-margin trading pair when either account type is 2, for example ETHUSDT. Not a Derivatives identifier." }, coinSymbol: { type: "string" }, amount: { type: "string" } }, required: ["fromAccountType", "toAccountType", "coinSymbol", "amount"], additionalProperties: false }, errorCodes: writeErrors,
     validate: requiredTransfer,
     preflight: (input, context) => resolveUniversalTransfer(input as Record<string, unknown>, context),
-    handler: (input, context) => context.api.signedPost("/sapi/v1/asset/universal_transfer", universalTransferBody(input as Record<string, unknown>), signed(context)),
+    confirmPreflight: async (input, context) => {
+      if (input.fromAccountType === "5" || input.toAccountType === "5") {
+        await resolveUniversalTransfer(input, context);
+      }
+    },
+    handler: (input, context) => {
+      const send = () => context.api.signedPost("/sapi/v1/asset/universal_transfer", universalTransferBody(input as Record<string, unknown>), signed(context), context.writeDeadlineMs);
+      return input.fromAccountType === "5" || input.toAccountType === "5" ? (context.futuresWrites ?? new FuturesWriteState()).execute(`${context.profile.name}|${context.profile.openApiBaseUrl}|transfer`, "wallet_universal_transfer", send) : send();
+    },
     writeSummary: (input) => {
       const value = input as Record<string, unknown>;
       const displayCoinSymbol = String(value.displayCoinSymbol ?? value.coinSymbol);
       const apiCoinSymbol = String(value.coinSymbol);
       return {
         action: "universal_transfer",
+        ...(value._transferableBalance !== undefined ? { sourceTransferableBalance: value._transferableBalance, balanceFetchedAt: value._balanceFetchedAt, profile: "spot", pairing: "operator-verified" } : {}),
         fromAccountType: value.fromAccountType,
         fromAccountTypeName: accountTypeName(String(value.fromAccountType)),
         toAccountType: value.toAccountType,
@@ -141,7 +168,10 @@ export const assetTools: ToolSpec<any>[] = [
     name: "wallet_get_universal_transfer_history", title: "Get Universal Transfer History", description: "Query universal transfer history using account types 1=Spot, 2=Isolated Margin, 3=Cross Margin, 4=C2C, and 5=Derivatives.", cliPath: ["wallet", "transfer-history"], module: "spot-deposit-withdraw", access: "signed", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { fromAccountType: accountTypeSchema, toAccountType: accountTypeSchema, symbol: { type: "string", description: "Isolated-margin trading pair when account type 2 is involved." }, coinSymbol: { type: "string" }, page: { type: "integer", minimum: 1 }, pageSize: listLimitSchema(STANDARD_PAGE_SIZE) }, required: ["fromAccountType", "toAccountType"], additionalProperties: false }, errorCodes: signedReadErrors,
     listLimit: STANDARD_PAGE_SIZE,
-    validate: transferQuery, handler: async (input, context) => context.api.signedPost("/sapi/v1/asset/universal_transfer_query", await resolveTenantIdentifiers(input as Record<string, unknown>, context), signed(context))
+    validate: transferQuery, handler: async (input, context) => {
+      const result = await context.api.signedPost("/sapi/v1/asset/universal_transfer_query", await resolveTenantIdentifiers(input as Record<string, unknown>, context), signed(context));
+      return input.fromAccountType === "5" || input.toAccountType === "5" ? transferView(result) : result;
+    }
   },
   {
     name: "wallet_get_deposit_history", title: "Get Deposit History", description: "Query deposit history.", cliPath: ["wallet", "deposit-history"], module: "spot-deposit-withdraw", access: "signed", operation: "read", riskLevel: "low",
@@ -165,7 +195,7 @@ export const assetTools: ToolSpec<any>[] = [
     name: "wallet_get_transferable_assets", title: "Get Transferable Assets", description: "Query transferable assets for one account type. The response echoes the selected account type and its name: 1=Spot, 2=Isolated Margin, 3=Cross Margin, 4=C2C, 5=Derivatives.", cliPath: ["wallet", "transferable-assets"], module: "spot-deposit-withdraw", access: "signed", operation: "read", riskLevel: "low",
     inputSchema: { type: "object", properties: { accountType: accountTypeSchema }, required: ["accountType"], additionalProperties: false }, errorCodes: signedReadErrors,
     unpagedListLimit: { path: ["data", "accountList"] },
-    validate: (input) => { const value = strictObject(input, ["accountType"]); return { accountType: accountType(value, "accountType") }; }, handler: async (input, context) => { const value = input as { accountType: string }; return withAccountTypeMetadata(await context.api.signedPost("/sapi/v1/asset/account/by_type", value, signed(context)), value.accountType); }
+    validate: (input) => { const value = strictObject(input, ["accountType"]); return { accountType: accountType(value, "accountType") }; }, handler: async (input, context) => { const value = input as { accountType: string }; return withAccountTypeMetadata(transferView(await context.api.signedPost("/sapi/v1/asset/account/by_type", value, signed(context))), value.accountType); }
   },
   {
     name: "wallet_create_withdraw", title: "Create Withdrawal", description: "Submit a withdrawal request after confirmation.", cliPath: ["wallet", "withdraw"], module: "spot-deposit-withdraw", access: "signed", operation: "write", riskLevel: "high",

@@ -1,3 +1,5 @@
+import { futuresTools } from "../futures/tools.js";
+import type { Product } from "../config.js";
 import { AiHubError } from "../errors.js";
 import type { ConfirmationPreparer, PreparedAction } from "../confirmation.js";
 import { confirmationContext } from "./execution-context.js";
@@ -13,17 +15,19 @@ import type { ToolExecutionContext, ToolSpec } from "./tool-spec.js";
 
 export interface ToolListOptions {
   readOnly?: boolean;
+  product?: Product;
 }
 
 export interface ToolCapability {
   name: string;
+  product: Product;
   module: ToolSpec["module"];
   operation: ToolSpec["operation"];
   riskLevel: ToolSpec["riskLevel"];
   status: "enabled" | "requires_auth" | "disabled";
 }
 
-const allTools = [...marketTools, ...accountTools, ...orderTools, ...marginTools, ...assetTools, ...subAccountTools];
+const allTools = [...marketTools, ...accountTools, ...orderTools, ...marginTools, ...assetTools, ...subAccountTools, ...futuresTools];
 
 /**
  * Gives every write preview one stable shape before it reaches CLI/MCP.
@@ -74,12 +78,12 @@ export class ToolRegistry {
   }
 
   public list(options: ToolListOptions = {}): ToolSpec[] {
-    return [...this.toolsByName.values()].filter((tool) => !options.readOnly || tool.operation === "read");
+    return [...this.toolsByName.values()].filter((tool) => (!options.readOnly || tool.operation === "read") && (!options.product || (tool.product ?? "spot") === options.product));
   }
 
   public byName(name: string, options: ToolListOptions = {}): ToolSpec {
     const tool = this.toolsByName.get(name);
-    if (!tool || (options.readOnly && tool.operation !== "read")) {
+    if (!tool || (options.readOnly && tool.operation !== "read") || (options.product && (tool.product ?? "spot") !== options.product)) {
       throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Tool "${name}" is not available in this server session.`);
     }
     return tool;
@@ -87,7 +91,7 @@ export class ToolRegistry {
 
   public byCliPath(path: readonly string[], options: ToolListOptions = {}): ToolSpec {
     const tool = this.toolsByCliPath.get(path.join(" "));
-    if (!tool || (options.readOnly && tool.operation !== "read")) {
+    if (!tool || (options.readOnly && tool.operation !== "read") || (options.product && (tool.product ?? "spot") !== options.product)) {
       throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Command "${path.join(" ")}" is not available.`);
     }
     return tool;
@@ -96,6 +100,7 @@ export class ToolRegistry {
   public async execute(name: string, input: unknown, context: ToolExecutionContext, options: ToolListOptions = {}): Promise<unknown> {
     const tool = this.byName(name, options);
     if (tool.operation === "write") throw new AiHubError("AI_HUB_WRITE_CONFIRMATION_REQUIRED", `Tool "${name}" must be executed through confirmation.`);
+    this.assertProduct(tool, context);
     const validInput = tool.validate(input);
     const response = await tool.handler(validInput, context);
     const normalized = tool.normalizeResult ? tool.normalizeResult(response, validInput) : response;
@@ -113,6 +118,7 @@ export class ToolRegistry {
   ): Promise<PreparedAction> {
     const tool = this.byName(name);
     if (tool.operation !== "write" || !tool.writeSummary) throw new AiHubError("AI_HUB_TOOL_NOT_WRITE", `Tool "${name}" is not a confirmable write Tool.`);
+    this.assertProduct(tool, context);
     const validInput = tool.validate(input);
     const preflightInput = tool.preflight ? await tool.preflight(validInput, context) : validInput;
     if (beforePrepare) await beforePrepare(tool.name, preflightInput as Record<string, unknown>);
@@ -120,7 +126,7 @@ export class ToolRegistry {
       action: tool.name,
       payload: preflightInput,
       context: confirmationContext(context),
-      summary: tool.writeSummary(preflightInput)
+      summary: { ...tool.writeSummary(preflightInput), ...(tool.product === "futures" ? { profile: context.profile.name, product: "futures" } : {}) }
     });
     return { ...prepared, summary: withStandardPreview(prepared.summary, prepared) };
   }
@@ -128,6 +134,7 @@ export class ToolRegistry {
   public async executeConfirmed(action: string, payload: Record<string, unknown>, context: ToolExecutionContext): Promise<unknown> {
     const tool = this.byName(action);
     if (tool.operation !== "write") throw new AiHubError("AI_HUB_TOOL_NOT_WRITE", `Tool "${action}" is not a write Tool.`);
+    this.assertProduct(tool, context);
     // The payload was validated and bound to the one-time confirmation during prepareWrite.
     // Do not validate it again: that could re-interpret internal normalized fields and change intent.
     // A confirmPreflight may only reject a now-risky request; it must not alter it.
@@ -136,9 +143,14 @@ export class ToolRegistry {
     return tool.normalizeResult ? tool.normalizeResult(response, payload as never) : response;
   }
 
+  private assertProduct(tool: ToolSpec, context: ToolExecutionContext): void {
+    if ((tool.product ?? "spot") !== (context.profile.product ?? "spot")) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "The selected profile does not support this product.");
+  }
+
   public capabilities(context: ToolExecutionContext, options: ToolListOptions = {}): ToolCapability[] {
-    return this.list(options).map((tool) => ({
+    return this.list({ ...options, product: context.profile.product ?? "spot" }).map((tool) => ({
       name: tool.name,
+      product: tool.product ?? "spot",
       module: tool.module,
       operation: tool.operation,
       riskLevel: tool.riskLevel,

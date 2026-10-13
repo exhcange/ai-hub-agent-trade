@@ -8,7 +8,16 @@ import { parse, stringify } from "smol-toml";
 import { loadStoredCredentials, validateApiCredentials, type ApiCredentials, type LoadedCredentials } from "./credential.js";
 import { AiHubError } from "./errors.js";
 
+export type Product = "spot" | "futures";
+
+export function validateProduct(value: unknown): Product {
+  if (value === undefined) return "spot";
+  if (value === "spot" || value === "futures") return value;
+  throw new AiHubError("AI_HUB_INVALID_PRODUCT", "Product must be spot or futures.");
+}
+
 export interface TenantProfile {
+  product?: Product;
   openapi_base_url: string;
   api_key?: string;
   secret_key?: string;
@@ -18,9 +27,12 @@ export interface LocalConfig {
   version: 1;
   default_profile: string;
   profiles: Record<string, TenantProfile>;
+  account_pairing?: { spotVersion: string; futuresVersion: string; evidenceId: string };
 }
 
 export interface ResolvedProfile {
+  accountPairing?: { source: "operator-verified"; evidenceId: string };
+  product?: Product;
   name: string;
   openApiBaseUrl: string;
   configVersion: string;
@@ -130,15 +142,17 @@ export class ConfigStore {
     return { created: !existing, path: this.filePath };
   }
 
-  public async setProfile(name: string, openApiBaseUrl: string): Promise<ResolvedProfile> {
+  public async setProfile(name: string, openApiBaseUrl: string, product?: Product): Promise<ResolvedProfile> {
     validateProfileName(name);
     const config = await this.read();
     const normalizedUrl = await normalizeOpenApiBaseUrl(openApiBaseUrl);
     const existing = config.profiles[name];
+    const keepCredentials = existing?.openapi_base_url === normalizedUrl;
     config.profiles[name] = {
+      product: validateProduct(product ?? existing?.product),
       openapi_base_url: normalizedUrl,
-      ...(existing?.api_key ? { api_key: existing.api_key } : {}),
-      ...(existing?.secret_key ? { secret_key: existing.secret_key } : {})
+      ...(keepCredentials && existing?.api_key ? { api_key: existing.api_key } : {}),
+      ...(keepCredentials && existing?.secret_key ? { secret_key: existing.secret_key } : {})
     };
     if (Object.keys(config.profiles).length === 1) config.default_profile = name;
     await this.write(config);
@@ -172,6 +186,35 @@ export class ConfigStore {
     };
   }
 
+  /** Records an operator-verified pairing; any profile/credential change invalidates it. */
+  public async pairProducts(evidenceId: string): Promise<{ paired: true; source: "operator-verified" }> {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(evidenceId)) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Provide a non-secret pairing evidence ID.");
+    const config = await this.read();
+    if (validateProduct(this.profileFrom(config, "spot").product) !== "spot" || validateProduct(this.profileFrom(config, "futures").product) !== "futures") throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "Pairing requires spot and futures product profiles.");
+    config.account_pairing = { spotVersion: versionOf(config, "spot"), futuresVersion: versionOf(config, "futures"), evidenceId };
+    await this.write(config);
+    return { paired: true, source: "operator-verified" };
+  }
+
+  /** Explicit offline migration. Dry-run reports names/products only, never credentials. */
+  public async migrateProducts(sources: { spot: string; futures: string }, apply = false): Promise<{ applied: boolean; mappings: { from: string; to: Product; product: Product }[] }> {
+    const config = await this.read();
+    const mappings = (["spot", "futures"] as const).map((product) => ({ from: validateProfileName(sources[product]), to: product, product }));
+    if (sources.spot === sources.futures) throw new AiHubError("AI_HUB_INVALID_PROFILE", "Two distinct source profiles are required.");
+    for (const item of mappings) {
+      this.profileFrom(config, item.from);
+      if (item.from !== item.to && config.profiles[item.to]) throw new AiHubError("AI_HUB_PROFILE_EXISTS", "Migration target already exists; no profiles were changed.");
+    }
+    if (apply) {
+      const copies = mappings.map((item) => ({ ...config.profiles[item.from]!, product: item.product }));
+      for (const item of mappings) delete config.profiles[item.from];
+      mappings.forEach((item, index) => { config.profiles[item.to] = copies[index]!; });
+      config.default_profile = mappings.find((item) => item.from === config.default_profile)?.to ?? config.default_profile;
+      await this.write(config);
+    }
+    return { applied: apply, mappings };
+  }
+
   public async removeProfile(name: string): Promise<void> {
     validateProfileName(name);
     const config = await this.read();
@@ -187,7 +230,7 @@ export class ConfigStore {
     const profile = config.profiles[name];
     if (!profile) throw new AiHubError("AI_HUB_PROFILE_NOT_FOUND", `Profile "${name}" does not exist.`);
     const value = validateApiCredentials(credentials);
-    config.profiles[name] = { openapi_base_url: profile.openapi_base_url, api_key: value.apiKey, secret_key: value.secretKey };
+    config.profiles[name] = { ...profile, api_key: value.apiKey, secret_key: value.secretKey };
     await this.write(config);
     return this.resolveFrom(config, name);
   }
@@ -197,8 +240,10 @@ export class ConfigStore {
     const profile = this.profileFrom(config, name);
     return {
       name,
+      product: validateProduct(profile.product),
+      ...(config.account_pairing && ["spot", "futures"].includes(name) && config.account_pairing.spotVersion === versionOf(config, "spot") && config.account_pairing.futuresVersion === versionOf(config, "futures") ? { accountPairing: { source: "operator-verified" as const, evidenceId: config.account_pairing.evidenceId } } : {}),
       openApiBaseUrl: profile.openapi_base_url,
-      configVersion: versionOf(config, name)
+      configVersion: createHash("sha256").update(versionOf(config, name)).update(JSON.stringify(config.account_pairing ?? null)).digest("hex")
     };
   }
 
@@ -206,6 +251,11 @@ export class ConfigStore {
     validateProfileName(name);
     const profile = config.profiles[name];
     if (!profile) throw new AiHubError("AI_HUB_PROFILE_NOT_FOUND", `Profile "${name}" does not exist.`);
+    validateProduct(profile.product);
+    try {
+      const url = new URL(profile.openapi_base_url);
+      if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.hostname === "localhost" || (isIP(url.hostname) && blockedIp(url.hostname))) throw new Error("unsafe URL");
+    } catch { throw new AiHubError("AI_HUB_INVALID_OPENAPI_URL", "Profile must contain a valid public HTTPS endpoint."); }
     return profile;
   }
 

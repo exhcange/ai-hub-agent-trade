@@ -34,6 +34,8 @@ export interface AiHubErrorPayloadOptions {
 export interface OpenApiBusinessDiagnosis {
   upstreamCode: string;
   upstreamMessage: string;
+  /** Futures messages are either verified API text or an explicit safe fallback. */
+  upstreamMessageSource?: "api" | "catalog" | "unavailable";
   reason: string;
   suggestedAction: string;
   retryable: boolean;
@@ -57,9 +59,11 @@ export function createRequestId(): string {
 
 function localErrorCategory(code: string): AiHubErrorCategory {
   if (code === "AI_HUB_INVALID_CREDENTIAL") return "AUTHENTICATION";
+  if (code.includes("PRODUCT") || code.includes("ACCOUNT_PAIRING")) return "CONFIGURATION";
   if (code.includes("CREDENTIAL")) return "CONFIGURATION";
   if (code.includes("PROFILE") || code.includes("CONFIG") || code.includes("OPENAPI_URL")) return "CONFIGURATION";
   if (code.includes("CONFIRMATION") || code === "AI_HUB_WRITE_RESULT_UNKNOWN" || code === "AI_HUB_UNRESOLVED_WRITE_EXISTS") return "CONFIRMATION";
+  if (code === "AI_HUB_OPENAPI_BUSINESS_ERROR") return "UPSTREAM_BUSINESS";
   if (code.includes("NOT_FOUND") || code === "AI_HUB_ASSET_NOT_MAPPED") return "NOT_FOUND";
   if (code.includes("NETWORK") || code.includes("HTTP") || code.includes("REDIRECT") || code.includes("INVALID_RESPONSE")) return "UPSTREAM_NETWORK";
   if (code.includes("PERMISSION") || code.includes("AUTHORIZATION")) return "AUTHORIZATION";

@@ -1,18 +1,23 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AI_HUB_RELEASE_VERSION, AiHubError, ConfigStore, configFilePath, createRequestId, createToolExecutionContext, createToolRegistry, FileConfirmationStore, toAiHubErrorPayload, ToolWriteExecutor, type ToolSpec } from "@ai-hub/agent-trade-core";
+import { AI_HUB_RELEASE_VERSION, AiHubError, ConfigStore, FuturesWriteState, configFilePath, validateProduct, createRequestId, createToolExecutionContext, createToolRegistry, FileConfirmationStore, toAiHubErrorPayload, ToolWriteExecutor, type ToolSpec } from "@ai-hub/agent-trade-core";
 
 function printHelp(): void {
   process.stdout.write(`AI Hub Agent Trade CLI
 
 Usage:
   ai-hub config init
-  ai-hub config set --profile <name> --openapi-base-url <https-url>
+  ai-hub config set --profile <name> --openapi-base-url <https-url> [--product spot|futures]
   ai-hub config set-credentials --profile <name>
   ai-hub config show [--profile <name>]
   ai-hub config path
   ai-hub config remove --profile <name>
+  ai-hub config migrate-products --spot-source <name> --futures-source <name> [--apply]
+  ai-hub config pair-products --evidence-id <id> --operator-verified
+  ai-hub futures <ping|time|contracts|market|account|order|trade> [options]
+  ai-hub futures operation-status [--transfer] [--profile <name>]
+  ai-hub futures resolve-operation --outcome <executed|not-executed> --evidence-id <id> --operator-verified [--operation-id <id>] [--transfer]
   ai-hub capabilities
   ai-hub confirm --confirmation-id <id> --user-confirmation <new-user-message> [--profile <name>]
   ai-hub market <ping|time|symbols|symbols-overview|symbols-list|symbols-search|symbol-info|price|ticker|ticker-summary|depth|depth-summary|trades|trades-summary|klines|klines-summary|klines-1min-history> [options]
@@ -54,6 +59,7 @@ function json(value: unknown): void {
 function cliCapabilities(): Record<string, unknown> {
   const tools = createToolRegistry().list().map((tool) => ({
     name: tool.name,
+    product: tool.product ?? "spot",
     cliPath: tool.cliPath.join(" "),
     module: tool.module,
     access: tool.access,
@@ -71,7 +77,7 @@ function cliCapabilities(): Record<string, unknown> {
     productScope: {
       spot: true,
       spotMargin: { isolated: true, cross: true, explicitLeverageMultiplier: false },
-      derivatives: false
+      derivatives: true
     },
     summary: {
       totalTools: tools.length,
@@ -167,12 +173,23 @@ async function runTool(args: string[], profileName: string | undefined, requestI
   if (args.includes("--confirm")) {
     throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "--confirm is not supported. Generate a preview, wait for a new user confirmation, then run ai-hub confirm with the returned confirmation ID.");
   }
+  if (args[0] === "futures" && ["operation-status", "resolve-operation"].includes(args[1] ?? "")) {
+    const transfer = args.includes("--transfer");
+    const selected = await new ConfigStore().showProfile(profileName ?? (transfer ? "spot" : "futures"));
+    if (selected.product !== (transfer ? "spot" : "futures")) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "A Futures profile is required.");
+    const binding = `${selected.name}|${selected.openApiBaseUrl}|${transfer ? "transfer" : "futures"}`, state = new FuturesWriteState();
+    if (args[1] === "operation-status") { json(await state.inspect(binding)); return; }
+    const outcome = optionValue(args, "--outcome"), evidenceId = optionValue(args, "--evidence-id");
+    if (!["executed", "not-executed"].includes(outcome ?? "") || !evidenceId || !args.includes("--operator-verified")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Resolution requires --outcome executed|not-executed, --evidence-id and --operator-verified after authoritative verification.");
+    await state.resolveWithEvidence(binding, outcome as "executed" | "not-executed", evidenceId, optionValue(args, "--operation-id"));
+    json({ resolved: true }); return;
+  }
   const commandArgs = args.filter((value) => value !== "--prepare");
   const registry = createToolRegistry();
   const tool = findTool(commandArgs);
   if (!tool) throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", "Unknown API command. Run ai-hub --help for available command groups.");
   const input = parseToolInput(tool, commandArgs.slice(tool.cliPath.length));
-  const context = await createToolExecutionContext(profileName, undefined, requestId);
+  const context = await createToolExecutionContext(profileName ?? (tool.product === "futures" ? "futures" : "spot"), undefined, requestId);
   if (tool.operation === "read") {
     json(await registry.execute(tool.name, input, context));
     return;
@@ -226,6 +243,17 @@ export async function run(argv: string[], requestId = createRequestId()): Promis
   const store = new ConfigStore();
 
   switch (action) {
+    case "pair-products": {
+      const evidenceId = optionValue(argv, "--evidence-id");
+      if (!evidenceId || !argv.includes("--operator-verified")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Pairing requires authoritative account verification followed by --evidence-id and --operator-verified.");
+      json(await store.pairProducts(evidenceId)); return;
+    }
+    case "migrate-products": {
+      const spotSource = optionValue(argv, "--spot-source"), futuresSource = optionValue(argv, "--futures-source");
+      if (!spotSource || !futuresSource) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Migration requires --spot-source and --futures-source; omit --apply for a dry run.");
+      json(await store.migrateProducts({ spot: spotSource, futures: futuresSource }, argv.includes("--apply")));
+      return;
+    }
     case "init":
       json(await store.initialize());
       return;
@@ -234,7 +262,7 @@ export async function run(argv: string[], requestId = createRequestId()): Promis
       if (!profile || !openApiBaseUrl) {
         throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "config set requires --profile and --openapi-base-url.");
       }
-      json(await store.setProfile(profile, openApiBaseUrl));
+      json(await store.setProfile(profile, openApiBaseUrl, optionValue(argv, "--product") === undefined ? undefined : validateProduct(optionValue(argv, "--product"))));
       return;
     }
     case "set-credentials": {

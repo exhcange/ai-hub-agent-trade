@@ -495,7 +495,7 @@ test("wallet tools preserve the server's Spot, Margin, C2C, and Derivatives acco
   } as never;
   assert.deepEqual(
     await transferableAssets.handler({ accountType: "5" }, context),
-    { code: "0", msg: "Success", data: { accountList: [] }, accountType: "5", accountTypeName: "Derivatives" }
+    { code: "0", data: { accountList: [] }, accountType: "5", accountTypeName: "Derivatives" }
   );
 });
 

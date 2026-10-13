@@ -13,7 +13,8 @@
     "typecheck": "pnpm --filter @ai-hub/agent-trade-core build && pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "clean": "pnpm -r --if-present clean",
-    "release-check": "pnpm typecheck && pnpm test && node scripts/check-denylist.mjs && node scripts/check-release-version.mjs"
+    "release-check": "pnpm typecheck && pnpm test && pnpm test:installer && node scripts/check-denylist.mjs && node scripts/check-release-version.mjs",
+    "test:installer": "node --test scripts/install-local-products.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

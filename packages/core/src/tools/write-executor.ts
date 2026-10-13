@@ -38,11 +38,11 @@ export class ToolWriteExecutor {
     const entry = { profile: context.profile.name, tool: pending.action, confirmationId, requestHash: pending.requestHash, requestId: context.requestId ?? createRequestId(), openApi: tool.openApiContract! };
     await this.audit.record({ event: "execution_started", ...entry });
     try {
-      const result = await this.registry.executeConfirmed(pending.action, pending.payload, context);
+      const result = await this.registry.executeConfirmed(pending.action, pending.payload, { ...context, writeDeadlineMs: pending.expiresAtMs });
       await this.audit.record({ event: "succeeded", ...entry });
       return result;
     } catch (error) {
-      if ((error instanceof AiHubError && error.code === "AI_HUB_OPENAPI_NETWORK_ERROR")
+      if ((error instanceof AiHubError && ["AI_HUB_OPENAPI_NETWORK_ERROR", "AI_HUB_WRITE_RESULT_UNKNOWN"].includes(error.code))
         || (error instanceof OpenApiBusinessError && error.diagnosis.writeOutcomeUnknown)) {
         const symbol = typeof pending.payload.symbol === "string" ? pending.payload.symbol : undefined;
         const newClientOrderId = typeof pending.payload.newClientOrderId === "string" ? pending.payload.newClientOrderId : undefined;
@@ -57,6 +57,12 @@ export class ToolWriteExecutor {
             // One read-only reconciliation attempt is allowed. ORDER_NOT_FOUND,
             // another network failure, or any indeterminate response remains UNKNOWN.
           }
+        }
+        if (error instanceof AiHubError && error.code === "AI_HUB_WRITE_RESULT_UNKNOWN" &&
+          (pending.action.startsWith("futures_") || (pending.action === "wallet_universal_transfer" && [pending.payload.fromAccountType, pending.payload.toAccountType].includes("5")))) {
+          await this.audit.record({ event: "outcome_unknown", ...entry, errorCode: error.code });
+          // The durable operation journal owns this reservation and its explicit resolution.
+          throw error;
         }
         await store.recordUnknown(context.profile.name, pending.action, pending.payload);
         await this.audit.record({ event: "outcome_unknown", ...entry, errorCode: "AI_HUB_WRITE_RESULT_UNKNOWN" });

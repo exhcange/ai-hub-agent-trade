@@ -1,5 +1,7 @@
 import type { LoadedCredentials } from "../credential.js";
-import type { ResolvedProfile } from "../config.js";
+import type { Product, ResolvedProfile } from "../config.js";
+import type { FuturesWriteState } from "../futures/write-state.js";
+import type { AiHubFuturesApi } from "../futures/api.js";
 import type { AiHubSpotApi } from "../openapi.js";
 import type { UnresolvedWriteStore } from "../unresolved-write.js";
 import type { ListLimit, UnpagedListLimit } from "./list-limit.js";
@@ -34,18 +36,22 @@ export interface JsonSchema {
 export interface ToolExecutionContext {
   /** Adapter request correlation ID. Optional for backward-compatible custom contexts. */
   requestId?: string;
+  writeDeadlineMs?: number;
   profile: ResolvedProfile;
   credentials?: LoadedCredentials;
   api: AiHubSpotApi;
+  futuresApi?: AiHubFuturesApi;
+  futuresWrites?: FuturesWriteState;
   unresolvedWrites?: UnresolvedWriteStore;
 }
 
 export interface ToolSpec<Input = Record<string, unknown>> {
   name: string;
+  product?: Product;
   title: string;
   description: string;
   cliPath: readonly string[];
-  module: "spot-common" | "spot-order" | "spot-margin" | "spot-account" | "spot-deposit-withdraw" | "spot-sub-account";
+  module: "spot-common" | "spot-order" | "spot-margin" | "spot-account" | "spot-deposit-withdraw" | "spot-sub-account" | "futures-common" | "futures-account" | "futures-order" | "futures-trade";
   access: ToolAccess;
   operation: ToolOperation;
   riskLevel: ToolRiskLevel;

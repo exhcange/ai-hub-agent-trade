@@ -1,6 +1,10 @@
 # AI Hub Agent Trade
 
-Local CLI, MCP, and Skills for AI Hub spot trading integrations.
+Local CLI, MCP, and Skills for AI Hub spot and Futures trading integrations.
+
+For a combined local installation or migration, see [现货与合约安装使用说明（中文）](docs/INSTALL_SPOT_FUTURES.zh-CN.md). The offline Codex installer is `node scripts/install-local-products.mjs` (dry-run by default).
+
+The Futures extension is implemented in this checkout and awaits live acceptance. See [Futures setup, migration and operating rules](docs/FUTURES.md), [operation mapping](docs/FUTURES_OPERATIONS.md), and [delivery and acceptance record](docs/FUTURES_DELIVERY.md).
 
 For low-latency natural-language reads, the CLI package also installs `aihub`. Requests such as `aihub show asset balances` and `aihub show BTCUSDT price` use a deterministic Core fast path and render the final result without an Agent. Requests outside the bounded fast surface fall back to a Codex `gpt-5.6-luna`/`low` Agent restricted to the configured AI Hub MCP server.
 
@@ -12,9 +16,9 @@ For low-latency natural-language reads, the CLI package also installs `aihub`. R
 - Bounded symbol overview, pagination, keyword search, and exact trading-rule lookup for responsive Agent interactions.
 - Compact single-symbol last-price reads through `market_get_last_price` / `ai-hub market price`.
 - Signed account, wallet, sub-account, isolated/cross spot-margin, and transfer read capabilities.
-- Local stdio MCP and CLI tools for single/batch spot orders, v2 isolated/cross spot-margin orders, wallet transfers and withdrawals, and sub-account administration. Derivatives and explicit leverage multipliers are not supported.
+- Local stdio MCP and CLI tools for single/batch spot orders, v2 isolated/cross spot-margin orders, wallet transfers and withdrawals, and sub-account administration. Futures operations and leverage settings use the separate `futures` command group and product profile.
 - Shared Tool Registry for MCP and CLI schemas, validation, access controls, error codes, and handlers.
-- One-time spot order preparation and confirmation. Preparation never sends an OpenAPI request.
+- One-time shared preparation and confirmation. Preparation can query OpenAPI for validation but never sends the requested state-changing operation.
 - MCP read-only mode for exposing queries without order, cancellation, withdrawal, transfer, or confirmation capabilities. Use `ai-hub-trade-mcp --profile default --read-only`, or persist it with `ai-hub-trade-mcp setup --client <client> --profile default --read-only`.
 
 ## Required confirmation boundary

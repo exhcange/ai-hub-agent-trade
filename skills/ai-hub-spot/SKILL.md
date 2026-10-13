@@ -8,7 +8,9 @@ description: Use this Skill for supported AI Hub spot-market, isolated or cross 
 
 Route supported spot-account requests to the matching MCP Tool when AI Hub MCP is available. Use the `ai-hub` CLI only as an MCP fallback. Do not invent commands or capabilities outside the installed integration.
 
-AI Hub margin means isolated or cross **spot margin only**. Never offer perpetuals or other non-spot products. An explicit leverage multiplier such as `10x` is not an available order parameter. Explain that boundary and ask for the supported spot-margin fields instead.
+AI Hub margin means isolated or cross **spot margin only**. For explicit Futures requests, route to the installed ai-hub-futures Skill and futures profile; do not reinterpret them as spot margin. An explicit leverage multiplier such as `10x` is not an available order parameter. Explain that boundary and ask for the supported spot-margin fields instead.
+
+For unspecified balances, query the fixed spot and futures profiles separately, preserving errors and avoiding cross-product totals. Explicit spot requests use spot; never fall back to smoke/default.
 
 ## MCP First
 
@@ -51,8 +53,8 @@ Use the CLI profile commands before the first authenticated request:
 
 ```bash
 ai-hub config init
-ai-hub config set --profile default --openapi-base-url https://your-openapi-domain
-ai-hub config set-credentials --profile default
+ai-hub config set --profile spot --openapi-base-url https://your-openapi-domain
+ai-hub config set-credentials --profile spot
 ```
 
 The API key and secret key are saved as plaintext in `~/.ai-hub/config.toml` with mode `600`; never copy them into a prompt, command argument, or source-controlled file.

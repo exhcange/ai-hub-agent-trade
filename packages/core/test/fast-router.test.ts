@@ -3,16 +3,16 @@ import test from "node:test";
 import { matchAiHubFastRoute, renderAiHubFastResult } from "../src/index.js";
 
 test("fast router recognizes bounded AIHub balance and current-price reads", () => {
-  assert.deepEqual(matchAiHubFastRoute("aihub 看资产余额"), {
+  assert.deepEqual(matchAiHubFastRoute("aihub 看现货资产余额"), {
     kind: "balance-list", toolName: "account_list_balances", input: {}
   });
-  assert.deepEqual(matchAiHubFastRoute("AIHub 查询 USDT 余额"), {
+  assert.deepEqual(matchAiHubFastRoute("AIHub 查询 USDT 现货余额"), {
     kind: "asset-balance", toolName: "account_get_asset_balance", input: { asset: "USDT" }
   });
-  assert.deepEqual(matchAiHubFastRoute("aihub show balances including zero"), {
+  assert.deepEqual(matchAiHubFastRoute("aihub show spot balances including zero"), {
     kind: "balance-list", toolName: "account_list_balances", input: { nonZeroOnly: false }
   });
-  assert.deepEqual(matchAiHubFastRoute("aihub show my balances"), {
+  assert.deepEqual(matchAiHubFastRoute("aihub show my spot balances"), {
     kind: "balance-list", toolName: "account_list_balances", input: {}
   });
   assert.deepEqual(matchAiHubFastRoute("aihub 查 BTC/USDT 当前价格"), {
@@ -33,10 +33,16 @@ test("fast router declines ambiguous or unprefixed requests", () => {
 });
 
 test("fast result renderer returns final compact text", () => {
-  const route = matchAiHubFastRoute("aihub 看资产余额");
+  const route = matchAiHubFastRoute("aihub 看现货资产余额");
   assert.ok(route);
   assert.equal(renderAiHubFastResult(route, { balances: [
     { asset: "USDT", total: "10", available: "9", frozen: "1" },
     { asset: "BTC", total: "0.1", available: "0.1", frozen: "0" }
   ] }), "USDT: total 10, available 9, frozen 1\nBTC: total 0.1, available 0.1");
+});
+
+ test("unspecified balances use dual accounts and explicit Futures never route to spot", () => {
+  assert.equal(matchAiHubFastRoute("aihub 查询余额")?.kind, "dual-balances");
+  assert.equal(matchAiHubFastRoute("aihub 查询合约余额")?.toolName, "futures_assets");
+  assert.equal(matchAiHubFastRoute("aihub 合约当前挂单"), null);
 });

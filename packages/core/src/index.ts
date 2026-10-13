@@ -23,6 +23,8 @@ export {
   configFilePath,
   normalizeOpenApiBaseUrl,
   validateProfileName,
+  validateProduct,
+  type Product,
   type LocalConfig,
   type ResolvedProfile,
   type ResolvedProfileWithCredentials,
@@ -39,3 +41,7 @@ export {
   type McpSetupRuntime,
   type McpSetupOptions
 } from "./setup.js";
+
+export { AiHubFuturesApi, FUTURES_ENDPOINTS, futuresContract, type FuturesEndpoint } from "./futures/api.js";
+
+export { FuturesWriteState } from "./futures/write-state.js";
