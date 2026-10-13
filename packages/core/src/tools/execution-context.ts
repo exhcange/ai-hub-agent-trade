@@ -1,3 +1,5 @@
+import { fileRequestScheduler } from "../futures/transport.js";
+import { AiHubFuturesApi } from "../futures/api.js";
 import { ConfigStore } from "../config.js";
 import { AiHubSpotApi, type ApiClientOptions } from "../openapi.js";
 import { AiHubError, createRequestId } from "../errors.js";
@@ -9,7 +11,7 @@ import { FileUnresolvedWriteStore } from "../unresolved-write.js";
 export async function createToolExecutionContext(profileName?: string, apiOptions?: ApiClientOptions, requestId = createRequestId()): Promise<ToolExecutionContext> {
   const store = new ConfigStore();
   const { profile, credentials } = await store.resolveProfileWithCredentials(profileName);
-  return { requestId, profile, credentials, api: new AiHubSpotApi(profile.openApiBaseUrl, apiOptions), unresolvedWrites: new FileUnresolvedWriteStore() };
+  return { requestId, profile, credentials, api: new AiHubSpotApi(profile.openApiBaseUrl, { requestScheduler: fileRequestScheduler(), ...apiOptions }), ...(profile.product === "futures" ? { futuresApi: new AiHubFuturesApi(profile.openApiBaseUrl, apiOptions) } : {}), unresolvedWrites: new FileUnresolvedWriteStore() };
 }
 
 export function confirmationContext(context: ToolExecutionContext): ExecutionContext {

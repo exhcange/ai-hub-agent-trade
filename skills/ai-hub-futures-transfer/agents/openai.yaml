@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ai Hub Futures Transfer"
+  short_description: "Use AI Hub Futures transfer tools"
+  default_prompt: "Use $ai-hub-futures-transfer to handle my Futures request."

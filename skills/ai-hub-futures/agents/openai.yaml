@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ai Hub Futures"
+  short_description: "Use AI Hub Futures capabilities tools"
+  default_prompt: "Use $ai-hub-futures to handle my Futures request."

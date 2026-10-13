@@ -46,7 +46,7 @@ test("file confirmations survive a separate CLI process and are consumed atomica
 
     const restoredStore = new FileConfirmationStore(directory);
     const confirmed = await restoredStore.confirm(prepared.confirmationId, "yes", context);
-    assert.deepEqual(confirmed, { action: "spot_market_sell", payload: { symbol: "ethusdt", baseQuantity: "0.5" }, requestHash: prepared.requestHash });
+    assert.deepEqual(confirmed, { action: "spot_market_sell", payload: { symbol: "ethusdt", baseQuantity: "0.5" }, requestHash: prepared.requestHash, expiresAtMs: Date.parse(prepared.expiresAt) });
     await assert.rejects(restoredStore.confirm(prepared.confirmationId, "yes", context), { code: "AI_HUB_CONFIRMATION_NOT_FOUND" });
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -64,3 +64,19 @@ test("file confirmation rejects a changed profile context and consumes the previ
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+for (const kind of ["memory", "file"] as const) {
+  test(`${kind} confirmations invalidate superseded Futures previews but keep unrelated contracts`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "ai-hub-revised-preview-"));
+    try {
+      const store = kind === "memory" ? new ConfirmationService() : new FileConfirmationStore(directory);
+      const input = { action: "futures_place_order", context, summary: {}, payload: { contractName: "E-BTC-USDT", quantity: "1" } };
+      const older = await store.prepare(input);
+      const unrelated = await store.prepare({ ...input, payload: { contractName: "E-ETH-USDT", quantity: "1" } });
+      const newer = await store.prepare({ ...input, payload: { ...input.payload, quantity: "2" } });
+      await assert.rejects(async () => store.confirm(older.confirmationId, "yes", context), { code: "AI_HUB_CONFIRMATION_NOT_FOUND" });
+      assert.equal((await store.confirm(newer.confirmationId, "yes", context)).payload.quantity, "2");
+      assert.equal((await store.confirm(unrelated.confirmationId, "yes", context)).payload.contractName, "E-ETH-USDT");
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+}

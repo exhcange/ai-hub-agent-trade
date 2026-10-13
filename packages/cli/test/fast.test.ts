@@ -5,7 +5,7 @@ import { codexAgentArguments, runFast } from "../src/fast.js";
 test("aihub fast CLI executes and renders a common read without an Agent", async () => {
   const output: string[] = [];
   let agentCalls = 0;
-  await runFast(["看资产余额"], {
+  await runFast(["看现货资产余额"], {
     execute: async (route) => {
       assert.equal(route.toolName, "account_list_balances");
       assert.deepEqual(route.input, {});
@@ -21,13 +21,13 @@ test("aihub fast CLI executes and renders a common read without an Agent", async
 test("aihub fast CLI falls back to a luna low MCP-only Codex Agent", async () => {
   let fallbackPrompt = "";
   let fallbackProfile: string | undefined;
-  await runFast(["分析", "BTCUSDT", "趋势", "--profile", "default"], {
+  await runFast(["分析", "BTCUSDT", "趋势", "--profile", "spot"], {
     execute: async () => { throw new Error("fast route must not run"); },
     runAgent: (prompt, profile) => { fallbackPrompt = prompt; fallbackProfile = profile; return 0; },
     write: () => undefined
   });
   assert.equal(fallbackPrompt, "分析 BTCUSDT 趋势");
-  assert.equal(fallbackProfile, "default");
+  assert.equal(fallbackProfile, "spot");
 
   const args = codexAgentArguments(fallbackPrompt, fallbackProfile);
   assert.ok(args.includes("gpt-5.6-luna"));
@@ -36,8 +36,8 @@ test("aihub fast CLI falls back to a luna low MCP-only Codex Agent", async () =>
   assert.ok(args.some((value) => value.includes("mcp_servers.aihub.command")));
   assert.ok(args.some((value) => value.includes("skills.config") && value.includes("ai-hub-spot-account")));
   assert.match(args.at(-1) ?? "", /only the configured AI Hub MCP server/i);
-  assert.match(args.at(-1) ?? "", /isolated or cross spot margin only/i);
-  assert.match(args.at(-1) ?? "", /Explicit leverage multipliers such as 10x are unsupported/i);
+  assert.match(args.at(-1) ?? "", /Spot-margin tools support spot margin only/i);
+  assert.match(args.at(-1) ?? "", /Never send a Futures request through spot tools/i);
   assert.match(args.at(-1) ?? "", /Never call confirm_action until a new user message/i);
 });
 
@@ -46,4 +46,12 @@ test("--no-agent rejects requests outside the deterministic surface", async () =
     runFast(["--no-agent", "分析", "BTCUSDT", "趋势"], { write: () => undefined }),
     (error: unknown) => error instanceof Error && error.message.includes("not supported by the deterministic fast path")
   );
+});
+
+ test("Agent routing keeps transfers on spot and complex balances on both fixed profiles", () => {
+  const transfer = codexAgentArguments("从合约划转到现货", undefined);
+  assert.ok(transfer.some((arg) => arg.includes('mcp_servers.aihub.args=') && arg.includes('"spot"')));
+  const balance = codexAgentArguments("分析我的余额", undefined);
+  assert.ok(balance.some((arg) => arg.startsWith("mcp_servers.aihub_futures.args=")));
+  assert.throws(() => codexAgentArguments("合约下单", "spot"), { code: "AI_HUB_PRODUCT_MISMATCH" });
 });

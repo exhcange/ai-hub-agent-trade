@@ -1,8 +1,8 @@
-export type AiHubFastRouteKind = "balance-list" | "asset-balance" | "last-price" | "open-orders";
+export type AiHubFastRouteKind = "futures-assets" | "dual-balances" | "balance-list" | "asset-balance" | "last-price" | "open-orders";
 
 export interface AiHubFastRoute {
   kind: AiHubFastRouteKind;
-  toolName: "account_list_balances" | "account_get_asset_balance" | "market_get_last_price" | "spot_get_open_orders";
+  toolName: "futures_assets" | "account_list_balances" | "account_get_asset_balance" | "market_get_last_price" | "spot_get_open_orders";
   input: Record<string, unknown>;
 }
 
@@ -37,6 +37,15 @@ export function matchAiHubFastRoute(prompt: string): AiHubFastRoute | null {
   if (request === null || !request) return null;
 
   if (/(?:分析|比较|建议|策略|趋势|为什么|如何|是否应该)/i.test(request) || /\b(?:analy[sz]e|compare|recommend|strategy|trend|why|how|should)\b/i.test(request)) return null;
+
+  const futures = /合约|永续|\bfutures\b|\bperpetuals?\b/i.test(request);
+  const spot = /现货|\bspot\b/i.test(request);
+  if (/(?:余额|balance|balances)/i.test(request) && !/(?:买入|卖出|下单|撤单|划转|buy|sell|transfer|cancel)/i.test(request)) {
+    const asset = assetFromBalancePrompt(request.replace(/合约|永续|\bfutures\b|\bperpetuals?\b/gi, ""));
+    if (futures && !spot) return { kind: "futures-assets", toolName: "futures_assets", input: asset ? { asset } : {} };
+    if (!spot || futures) return { kind: "dual-balances", toolName: "account_list_balances", input: asset ? { asset } : {} };
+  }
+  if (futures) return null;
 
   if (/(?:当前挂单|未成交订单|open\s+orders?)/i.test(request)) {
     const symbol = [...request.matchAll(/\b([a-z0-9]{5,20})\b/gi)]
@@ -100,6 +109,7 @@ function renderOpenOrders(data: unknown): string {
 /** Produces a final user-facing response without a second model pass. */
 export function renderAiHubFastResult(route: AiHubFastRoute, data: unknown): string {
   const value = object(data) ?? {};
+  if (route.kind === "dual-balances" || route.kind === "futures-assets") return JSON.stringify(data, null, 2);
   if (route.kind === "balance-list") return renderBalanceList(data);
   if (route.kind === "asset-balance") {
     return `${text(value.asset, text(route.input.asset, "Asset"))} balance: total ${text(value.total)}, available ${text(value.available)}, frozen ${text(value.frozen)}.`;

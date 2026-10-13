@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { AiHubError } from "./errors.js";
+import { withLocalLock } from "./futures/transport.js";
 
 export interface ExecutionContext {
   profile: string;
@@ -54,6 +55,15 @@ function hash(input: PrepareActionInput): string {
   return createHash("sha256").update(stableJson({ action: input.action, payload: input.payload, context: input.context })).digest("hex");
 }
 
+/** A revised Futures intent replaces earlier overlapping previews, never other products. */
+function supersedes(next: PrepareActionInput, previous: PrepareActionInput): boolean {
+  const managed = (value: PrepareActionInput) => value.action.startsWith("futures_") ||
+    (value.action === "wallet_universal_transfer" && [value.payload.fromAccountType, value.payload.toAccountType].includes("5"));
+  if (!managed(next) || !managed(previous) || next.context.profile !== previous.context.profile) return false;
+  const global = (value: PrepareActionInput) => ["futures_set_position_mode", "futures_cancel_all_orders"].includes(value.action) || typeof value.payload.contractName !== "string";
+  return global(next) || global(previous) || next.payload.contractName === previous.payload.contractName;
+}
+
 function createPending(input: PrepareActionInput, ttlMs: number, now: () => number): PendingConfirmation {
   return {
     ...input,
@@ -75,7 +85,7 @@ function preparedAction(pending: PendingConfirmation): PreparedAction {
   };
 }
 
-function confirmPending(pending: PendingConfirmation, userConfirmation: string, context: ExecutionContext, now: () => number): { action: string; payload: Record<string, unknown>; requestHash: string } {
+function confirmPending(pending: PendingConfirmation, userConfirmation: string, context: ExecutionContext, now: () => number): ConfirmedAction {
   if (typeof userConfirmation !== "string" || !userConfirmation.trim()) {
     throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "A non-empty new explicit user confirmation message is required before a state-changing request can execute.");
   }
@@ -85,7 +95,7 @@ function confirmPending(pending: PendingConfirmation, userConfirmation: string, 
   if (stableJson(pending.context) !== stableJson(context)) {
     throw new AiHubError("AI_HUB_CONFIRMATION_CONTEXT_CHANGED", "Profile, OpenAPI base URL, configuration, or credentials changed after prepare.");
   }
-  return { action: pending.action, payload: pending.payload, requestHash: pending.requestHash };
+  return { action: pending.action, payload: pending.payload, requestHash: pending.requestHash, expiresAtMs: pending.expiresAtMs };
 }
 
 export interface ConfirmationPreparer {
@@ -93,6 +103,7 @@ export interface ConfirmationPreparer {
 }
 
 export interface ConfirmedAction {
+  expiresAtMs?: number;
   action: string;
   payload: Record<string, unknown>;
   requestHash: string;
@@ -111,6 +122,7 @@ export class ConfirmationService implements ConfirmationStore {
 
   public prepare(input: PrepareActionInput): PreparedAction {
     const pending = createPending(input, this.ttlMs, this.now);
+    for (const [id, previous] of this.actions) if (supersedes(input, previous)) this.actions.delete(id);
     this.actions.set(pending.confirmationId, { ...pending, consumed: false });
     return preparedAction(pending);
   }
@@ -143,6 +155,19 @@ export class FileConfirmationStore implements ConfirmationStore {
   ) {}
 
   public async prepare(input: PrepareActionInput): Promise<PreparedAction> {
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    return withLocalLock(join(this.directory, ".confirmation.lock"), Date.now() + 30_000, async () => {
+      for (const file of await readdir(this.directory)) {
+        const id = file.replace(/\.json$/, "");
+        if (file !== `${id}.json` || !CONFIRMATION_ID.test(id)) continue;
+        const previous = this.parse(await readFile(this.filePath(id), "utf8"), id);
+        if (supersedes(input, previous)) await rm(this.filePath(id));
+      }
+      return this.savePreview(input);
+    });
+  }
+
+  private async savePreview(input: PrepareActionInput): Promise<PreparedAction> {
     const pending = createPending(input, this.ttlMs, this.now);
     const filePath = this.filePath(pending.confirmationId);
     const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
@@ -161,6 +186,12 @@ export class FileConfirmationStore implements ConfirmationStore {
   }
 
   public async confirm(confirmationId: string, userConfirmation: string, context: ExecutionContext): Promise<ConfirmedAction> {
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    return withLocalLock(join(this.directory, ".confirmation.lock"), Date.now() + 30_000,
+      () => this.consumePreview(confirmationId, userConfirmation, context));
+  }
+
+  private async consumePreview(confirmationId: string, userConfirmation: string, context: ExecutionContext): Promise<ConfirmedAction> {
     if (typeof userConfirmation !== "string" || !userConfirmation.trim()) {
       throw new AiHubError("AI_HUB_CONFIRMATION_REQUIRED", "A non-empty new explicit user confirmation message is required before a state-changing request can execute.");
     }

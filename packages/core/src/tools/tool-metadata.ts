@@ -1,3 +1,4 @@
+import { futuresTools } from "../futures/tools.js";
 import { AiHubError } from "../errors.js";
 import type { AgentRouting, OpenApiContract, ToolSpec } from "./tool-spec.js";
 
@@ -14,6 +15,7 @@ function assign(names: readonly string[], contract: OpenApiContract): Record<str
  * this manifest exists for capability generation and contract verification.
  */
 export const OPENAPI_CONTRACTS: Readonly<Record<string, Readonly<OpenApiContract>>> = {
+  ...Object.fromEntries(futuresTools.map((tool) => [tool.name, tool.openApiContract!])),
   ...assign(["market_ping"], publicGet("/sapi/v2/ping")),
   ...assign(["market_get_server_time"], publicGet("/sapi/v2/time")),
   ...assign(["market_get_symbols", "market_get_symbol_overview", "market_list_symbols", "market_search_symbols", "market_get_symbol_info"], publicGet("/sapi/v2/symbols")),
@@ -105,5 +107,5 @@ export function mcpRoutingInstructions(): string {
 
 /** Shared reference content consumed by focused Skills in both repositories. */
 export function skillRoutingMarkdown(): string {
-  return `# AI Hub MCP Routing\n\nWhen AI Hub MCP is available, understand the request and call the exact MCP Tool directly. Use the CLI only when MCP is unavailable. Never retry an MCP business or validation failure through CLI.\n\n- **Market:** current price → \`market_get_last_price\`; normal ticker, depth, trades, or K lines → the matching \`*_summary\` Tool. Use raw market Tools only when the user explicitly requests raw or complete fields.\n- **Account:** one named asset → \`account_get_asset_balance\`; balance overview → \`account_list_balances\`.\n- **Spot margin scope:** margin Tools support isolated and cross spot margin only. Perpetuals, other non-spot products, and explicit leverage multipliers such as 10x are unsupported. Never offer a non-spot route.\n- **Spot-margin mode:** every margin write must explicitly provide \`isolated=true\` for isolated margin or \`isolated=false\` for cross margin. Never infer this value.\n- **Spot/Spot-margin writes:** call the matching \`*_prepare_*\` Tool, then wait for a new explicit user message before \`confirm_action\`.\n- **Wallet/Sub-account:** choose the exact \`wallet_*\` or \`sub_account_*\` Tool. Do not infer identifiers, account types, or write values.\n`;
+  return `# AI Hub MCP Routing\n\nWhen AI Hub MCP is available, understand the request and call the exact MCP Tool directly. Use the CLI only when MCP is unavailable. Never retry an MCP business or validation failure through CLI.\n\n- **Market:** current price → \`market_get_last_price\`; normal ticker, depth, trades, or K lines → the matching \`*_summary\` Tool. Use raw market Tools only when the user explicitly requests raw or complete fields.\n- **Account:** one named asset → \`account_get_asset_balance\`; balance overview → \`account_list_balances\`.\n- **Spot margin scope:** margin Tools support isolated and cross spot margin only. Do not submit Futures requests through margin tools. Route explicit Futures requests to the futures product server and ai-hub-futures Skill. An unspecified balance request queries spot and futures separately without adding totals.\n- **Spot-margin mode:** every margin write must explicitly provide \`isolated=true\` for isolated margin or \`isolated=false\` for cross margin. Never infer this value.\n- **Spot/Spot-margin writes:** call the matching \`*_prepare_*\` Tool, then wait for a new explicit user message before \`confirm_action\`.\n- **Wallet/Sub-account:** choose the exact \`wallet_*\` or \`sub_account_*\` Tool. Do not infer identifiers, account types, or write values.\n`;
 }

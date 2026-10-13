@@ -1,3 +1,4 @@
+import type { RequestScheduler } from "./futures/transport.js";
 import { createHmac } from "node:crypto";
 import { AiHubError, OpenApiBusinessError } from "./errors.js";
 import { diagnoseOpenApiBusinessError, isOpenApiSuccessCode } from "./openapi-error-catalog.js";
@@ -38,6 +39,7 @@ export interface SpotCancelOrderParams {
 
 export interface ApiClientOptions {
   timeoutMs?: number;
+  requestScheduler?: RequestScheduler;
   userAgent?: string;
   /** Local-only observer for elapsed OpenAPI time. It receives no request or response data. */
   onRequestTiming?: (elapsedMs: number) => void;
@@ -133,11 +135,13 @@ export function signRequest(timestamp: string, method: string, path: string, sec
 
 /** Local REST adapter for the tenant's spot OpenAPI. */
 export class AiHubSpotApi {
+  private readonly requestScheduler?: RequestScheduler;
   private readonly timeoutMs: number;
   private readonly userAgent: string;
   private readonly onRequestTiming: ((elapsedMs: number) => void) | undefined;
 
   public constructor(private readonly baseUrl: string, options: ApiClientOptions = {}) {
+    this.requestScheduler = options.requestScheduler;
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.userAgent = options.userAgent ?? AI_HUB_USER_AGENT;
     this.onRequestTiming = options.onRequestTiming;
@@ -240,11 +244,19 @@ export class AiHubSpotApi {
     return this.request("GET", path, query, undefined, credentials);
   }
 
-  public signedPost(path: string, body: Record<string, unknown>, credentials: ApiCredentials): Promise<unknown> {
-    return this.request("POST", path, {}, body, credentials);
+  public signedPost(path: string, body: Record<string, unknown>, credentials: ApiCredentials, confirmationDeadline?: number): Promise<unknown> {
+    return this.request("POST", path, {}, body, credentials, confirmationDeadline);
   }
 
-  private async request(
+  private async request(method: "GET" | "POST", path: string, query: Record<string, QueryValue> = {}, body?: Record<string, unknown>, credentials?: ApiCredentials, confirmationDeadline?: number): Promise<unknown> {
+    const send = () => {
+      if (confirmationDeadline !== undefined && Date.now() >= confirmationDeadline) throw new AiHubError("AI_HUB_CONFIRMATION_EXPIRED", "Confirmation expired before dispatch; prepare a new preview.");
+      return this.dispatch(method, path, query, body, credentials);
+    };
+    return this.requestScheduler ? this.requestScheduler(`${this.baseUrl}|${method}|${path}`, Date.now() + 30_000, send) : send();
+  }
+
+  private async dispatch(
     method: "GET" | "POST",
     path: string,
     query: Record<string, QueryValue> = {},

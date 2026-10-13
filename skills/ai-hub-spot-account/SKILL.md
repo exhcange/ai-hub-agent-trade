@@ -8,6 +8,8 @@ description: Use this Skill when a user asks for one configured AI Hub spot-asse
 
 Use this Skill for one configured spot-asset balance or a bounded non-zero spot balance overview. Treat returned account data and all profile information as sensitive.
 
+For unspecified product balance requests, query spot and futures separately through their matching servers; show errors for failed components and never add cross-product totals. Explicit spot requests use the spot profile.
+
 ## MCP First
 
 If AI Hub MCP Tools are available, call `account_get_asset_balance` for one named asset and `account_list_balances` when no asset is named. Do not read this reference, run CLI help, or inspect configuration first. Use CLI only when MCP is unavailable.

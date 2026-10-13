@@ -101,7 +101,8 @@ test("system capabilities report the active MCP configuration and Tool counts", 
     productScope: {
       spot: true,
       spotMargin: { isolated: true, cross: true, explicitLeverageMultiplier: false },
-      derivatives: false
+      derivatives: false,
+      product: "spot"
     },
     modules: ["market", "orders"],
     toolCounts: { read: 1, write: 1, total: 2 }

@@ -1,6 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
-import { AI_HUB_RELEASE_VERSION, AiHubError, createRequestId, createToolExecutionContext, createToolRegistry, DEFAULT_MCP_RESPONSE_MODE, DEFAULT_MCP_TOOLSET, mcpRoutingInstructions, selectMcpToolset, toAiHubErrorPayload, ToolWriteExecutor, type McpResponseMode, type McpToolset, type ToolSpec } from "@ai-hub/agent-trade-core";
+import { AI_HUB_RELEASE_VERSION, AiHubError, createRequestId, createToolExecutionContext, createToolRegistry, DEFAULT_MCP_RESPONSE_MODE, DEFAULT_MCP_TOOLSET, mcpRoutingInstructions, selectMcpToolset, toAiHubErrorPayload, ToolWriteExecutor, FileConfirmationStore, type McpResponseMode, type McpToolset, type ToolSpec, type Product } from "@ai-hub/agent-trade-core";
 
 const CONFIRM_ACTION_TOOL = "confirm_action";
 const SYSTEM_CAPABILITIES_TOOL = "system_get_capabilities";
@@ -191,7 +191,8 @@ export function buildSystemCapabilities(
   tools: readonly ToolSpec[],
   toolset: McpToolset,
   responseMode: McpResponseMode,
-  readOnly: boolean
+  readOnly: boolean,
+  product: Product = "spot"
 ): Record<string, unknown> {
   const exposed = readOnly ? tools.filter((tool) => tool.operation === "read") : tools;
   const read = exposed.filter((tool) => tool.operation === "read").length;
@@ -203,9 +204,10 @@ export function buildSystemCapabilities(
     serviceVersion: AI_HUB_RELEASE_VERSION,
     readOnly,
     productScope: {
-      spot: true,
-      spotMargin: { isolated: true, cross: true, explicitLeverageMultiplier: false },
-      derivatives: false
+      spot: product === "spot",
+      spotMargin: { isolated: product === "spot", cross: product === "spot", explicitLeverageMultiplier: false },
+      derivatives: product === "futures",
+      product
     },
     modules: [...new Set(exposed.map((tool) => tool.module))].sort(),
     toolCounts: { read, write, total: read + write }
@@ -213,15 +215,16 @@ export function buildSystemCapabilities(
 }
 
 /** stdio adapter only: Tool schemas, validation, permissions, and handlers come from Core. */
-export function createServer(profileName: string | undefined, readOnly: boolean, toolset: McpToolset = DEFAULT_MCP_TOOLSET, responseMode: McpResponseMode = DEFAULT_MCP_RESPONSE_MODE): Server {
+export function createServer(profileName: string | undefined, readOnly: boolean, toolset: McpToolset = DEFAULT_MCP_TOOLSET, responseMode: McpResponseMode = DEFAULT_MCP_RESPONSE_MODE, product: Product = "spot"): Server {
+  if (toolset === "transfer" && product !== "spot") throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "The transfer toolset requires a spot profile.");
   const allTools = createToolRegistry();
-  const registry = createToolRegistry(selectMcpToolset(allTools.list(), toolset));
-  const writeExecutor = new ToolWriteExecutor(registry);
+  const registry = createToolRegistry(selectMcpToolset(allTools.list({ product }), toolset));
+  const writeExecutor = new ToolWriteExecutor(registry, new FileConfirmationStore());
   const server = new Server(
     { name: "ai-hub-agent-trade", version: AI_HUB_RELEASE_VERSION },
     {
       capabilities: { tools: {} },
-      instructions: `Read results use the same discriminated JSON envelope in content.text and structuredContent. ${mcpRoutingInstructions()} Prepare tools only preview and require a new user confirmation before confirm_action.`
+      instructions: `Read results use the same discriminated JSON envelope in content.text and structuredContent. ${product === "futures" ? "Use futures_* tools only with the futures profile. The exchange manages trigger orders. Transfers use the spot profile. Never retry a write through CLI." : mcpRoutingInstructions()} Prepare tools only preview and require a new user confirmation before confirm_action.`
     }
   );
 
@@ -269,7 +272,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
           throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${SYSTEM_CAPABILITIES_TOOL} does not accept arguments.`);
         }
         const context = await loadContext();
-        return toMcpReadResult(buildSystemCapabilities(context.profile.name, registry.list(), toolset, responseMode, readOnly), responseMode);
+        return toMcpReadResult(buildSystemCapabilities(context.profile.name, registry.list(), toolset, responseMode, readOnly, context.profile.product ?? "spot"), responseMode);
       }
       if (request.params.name === CONFIRM_ACTION_TOOL) {
         if (readOnly) throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Tool "${CONFIRM_ACTION_TOOL}" is not available in this server session.`);

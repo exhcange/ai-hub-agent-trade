@@ -36,7 +36,7 @@ test("capabilities reports the installed CLI surface without requiring a profile
   assert.deepEqual(value.productScope, {
     spot: true,
     spotMargin: { isolated: true, cross: true, explicitLeverageMultiplier: false },
-    derivatives: false
+    derivatives: true
   });
   assert.equal(value.summary.totalTools, value.summary.readTools + value.summary.writeTools);
   assert.ok(value.tools.some((tool) => tool.name === "market_get_ticker" && tool.cliPath === "market ticker" && tool.operation === "read"));

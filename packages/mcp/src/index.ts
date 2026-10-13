@@ -2,7 +2,7 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { AI_HUB_RELEASE_VERSION, AiHubError, parseMcpResponseMode, parseMcpToolset, printMcpSetupUsage, runMcpSetup, SUPPORTED_MCP_CLIENTS, type McpClientId } from "@ai-hub/agent-trade-core";
+import { AI_HUB_RELEASE_VERSION, AiHubError, ConfigStore, parseMcpResponseMode, parseMcpToolset, printMcpSetupUsage, runMcpSetup, SUPPORTED_MCP_CLIENTS, type McpClientId } from "@ai-hub/agent-trade-core";
 import { createServer } from "./server.js";
 
 function readOption(args: string[], option: string): string | undefined {
@@ -17,8 +17,8 @@ function printUsage(): void {
   process.stdout.write(
     "AI Hub Agent Trade MCP\n\n" +
     "Usage:\n" +
-    "  ai-hub-trade-mcp [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>] [--read-only]\n" +
-    "  ai-hub-trade-mcp setup --client <client> [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>] [--read-only]\n\n" +
+    "  ai-hub-trade-mcp [--profile <name>] [--toolset <default|full|transfer>] [--response-mode <compact|compat>] [--read-only]\n" +
+    "  ai-hub-trade-mcp setup --client <client> [--profile <name>] [--toolset <default|full|transfer>] [--response-mode <compact|compat>] [--read-only]\n\n" +
     "The default command starts the local stdio MCP server.\n" +
     "Use setup to register it with Cursor, Claude Desktop, Claude Code, Codex, or OpenClaw.\n"
   );
@@ -56,7 +56,8 @@ export async function main(argv: string[]): Promise<void> {
   const readOnly = argv.includes("--read-only");
   const toolset = parseMcpToolset(readOption(argv, "--toolset"));
   const responseMode = parseMcpResponseMode(readOption(argv, "--response-mode"));
-  const server = createServer(profileName, readOnly, toolset, responseMode);
+  const selected = await new ConfigStore().showProfile(profileName);
+  const server = createServer(selected.name, readOnly, toolset, responseMode, selected.product ?? "spot");
   await server.connect(new StdioServerTransport());
 }
 

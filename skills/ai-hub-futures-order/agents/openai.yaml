@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ai Hub Futures Order"
+  short_description: "Use AI Hub Futures order tools"
+  default_prompt: "Use $ai-hub-futures-order to handle my Futures request."
