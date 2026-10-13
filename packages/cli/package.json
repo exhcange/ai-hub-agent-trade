@@ -1,7 +1,7 @@
 {
   "name": "@aihubspot/agent-trade-cli",
-  "version": "0.1.20",
-  "description": "Local spot trading command-line tools for AI Hub",
+  "version": "0.1.30",
+  "description": "Local spot and Futures trading command-line tools for AI Hub",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

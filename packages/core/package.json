@@ -1,6 +1,6 @@
 {
   "name": "@ai-hub/agent-trade-core",
-  "version": "0.1.20",
+  "version": "0.1.30",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

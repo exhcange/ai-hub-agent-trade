@@ -1,7 +1,7 @@
 ---
 name: ai-hub-futures
 metadata:
-  version: "0.1.20"
+  version: "0.1.30"
 description: Route Futures account and trading requests to the installed AI Hub tools.
 ---
 

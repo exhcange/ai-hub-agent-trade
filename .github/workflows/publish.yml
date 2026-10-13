@@ -52,11 +52,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify source
-        run: pnpm release-check
-
       - name: Build packages
         run: pnpm build
+
+      - name: Verify source
+        run: pnpm release-check
 
       - name: Use npm with trusted publishing support
         run: npm install --global npm@11.5.1
