@@ -3,7 +3,7 @@
 ## Projects and packages
 
 * [AI Hub Agent Trade: CLI and MCP source](https://github.com/exhcange/ai-hub-agent-trade)
-* [AI Hub Agent Skills: Skills source](https://github.com/exhcange/ai-hub-agent-trade/tree/main/skills)
+* [AI Hub Agent Skills: Skills source](https://github.com/exhcange/ai-hub-agent-skills)
 * [CLI npm package: @aihubspot/agent-trade-cli](https://www.npmjs.com/package/@aihubspot/agent-trade-cli)
 * [MCP npm package: @aihubspot/agent-trade-mcp](https://www.npmjs.com/package/@aihubspot/agent-trade-mcp)
 
@@ -21,9 +21,3 @@ ai-hub-trade-mcp --help
 {% hint style="info" %}
 This guide describes commonly released capabilities. If documentation differs from the CLI or MCP behavior, defer to the latest GitHub source, the npm package version, and your local `--help` output.
 {% endhint %}
-
-
-## Futures
-
-- [Futures OpenAPI](https://exchangedocsv2.gitbook.io/open-api-doc-v2/futures)
-- [Futures operation mapping](futures-operations.md)
