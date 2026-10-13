@@ -1,0 +1,19 @@
+$schema: https://api.gitbook.com/gitbook-docs.yaml
+site:
+  title: Ai Hub
+  structure:
+    - type: space
+      key: space-2
+      title: AiHub Operation Manual
+      path: en
+      default: true
+      content:
+        directory: ./
+        language: en
+    - type: space
+      key: space-1
+      title: AiHub 操作手册
+      path: zh
+      content:
+        directory: ./zh
+        language: en
