@@ -1,7 +1,6 @@
 ---
 name: ai-hub-futures-order
-metadata:
-  version: "0.1.30"
+version: "0.1.30"
 description: Query Futures orders and fills, or prepare ordinary and trigger cancellations.
 ---
 

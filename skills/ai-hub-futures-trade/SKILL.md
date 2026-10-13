@@ -1,7 +1,6 @@
 ---
 name: ai-hub-futures-trade
-metadata:
-  version: "0.1.30"
+version: "0.1.30"
 description: Prepare Futures ordinary, conditional and TP/SL orders and trading settings.
 ---
 

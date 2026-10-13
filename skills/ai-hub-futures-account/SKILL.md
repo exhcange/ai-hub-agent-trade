@@ -1,7 +1,6 @@
 ---
 name: ai-hub-futures-account
-metadata:
-  version: "0.1.30"
+version: "0.1.30"
 description: Query Futures assets, positions, historical PnL and account transactions.
 ---
 

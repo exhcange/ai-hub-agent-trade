@@ -1,7 +1,6 @@
 ---
 name: ai-hub-futures-transfer
-metadata:
-  version: "0.1.30"
+version: "0.1.30"
 description: Transfer between spot and Futures using the existing spot-side capabilities.
 ---
 
