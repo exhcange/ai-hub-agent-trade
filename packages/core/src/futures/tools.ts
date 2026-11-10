@@ -16,7 +16,7 @@ function api(context: ToolExecutionContext) {
   if (context.profile.product !== "futures" || !context.futuresApi) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "A Futures profile is required.");
   return context.futuresApi;
 }
-function binding(context: ToolExecutionContext): string { return `${context.profile.name}|${context.profile.openApiBaseUrl}|futures`; }
+function binding(context: ToolExecutionContext): string { return `${(context.profile.stateProfileName ?? context.profile.name)}|${context.profile.openApiBaseUrl}|futures`; }
 function validatePlacement(input: Record<string, unknown>): void {
   positive(input.quantity, "quantity");
   if (input.unit === "contracts" && !/^[1-9]\d*$/.test(String(input.quantity))) invalid("Contract quantity must be a positive integer.");

@@ -8,7 +8,7 @@ When the selected profile is already configured, execute the focused API command
 
 ```bash
 ai-hub config init
-ai-hub config set --profile <profile> --openapi-base-url https://your-openapi-domain
+ai-hub config set --profile <profile> --products spot,futures --openapi-base-url https://openapi.example.com
 ai-hub config set-credentials --profile <profile>
 ```
 

@@ -1,5 +1,8 @@
 # Futures integration
 
+Unified merchant profiles now support both products through one MCP instance with shared credentials. See [Unified MCP](UNIFIED_MCP.md). The separate spot/futures profile examples below remain valid for legacy installations.
+
+
 This extension changes AI Hub only. It adds a Futures adapter, 26 semantic Core operations backed by 25 approved HTTP operations, CLI/MCP exposure, six Skills, product-aware profiles, and reuse of three spot transfer capabilities. The spot frontend team owns Skill display; there is no frontend or exchange-server implementation here.
 
 ## Configuration and migration

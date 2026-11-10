@@ -126,7 +126,7 @@ export class ToolRegistry {
       action: tool.name,
       payload: preflightInput,
       context: confirmationContext(context),
-      summary: { ...tool.writeSummary(preflightInput), ...(tool.product === "futures" ? { profile: context.profile.name, product: "futures" } : {}) }
+      summary: { ...tool.writeSummary(preflightInput), ...(context.profile.products || tool.product === "futures" ? { profile: context.profile.name, product: tool.product ?? "spot" } : {}) }
     });
     return { ...prepared, summary: withStandardPreview(prepared.summary, prepared) };
   }
@@ -148,7 +148,7 @@ export class ToolRegistry {
   }
 
   public capabilities(context: ToolExecutionContext, options: ToolListOptions = {}): ToolCapability[] {
-    return this.list({ ...options, product: context.profile.product ?? "spot" }).map((tool) => ({
+    return this.list(context.profile.products ? options : { ...options, product: context.profile.product ?? "spot" }).map((tool) => ({
       name: tool.name,
       product: tool.product ?? "spot",
       module: tool.module,

@@ -1,5 +1,8 @@
 # 02 MCP
 
+For one MCP server with shared Spot/Futures credentials and automatic domain derivation, see [Unified connections](unified-mcp.md). With a unified profile, use the same merchant profile for both products; separate-product examples remain valid for legacy installations.
+
+
 MCP (Model Context Protocol) lets supported AI clients call AI Hub as structured tools. AI Hub MCP runs only as a local `stdio` server and uses the CLI's locally configured profile and credentials.
 
 ## When to use MCP
@@ -38,16 +41,16 @@ After the CLI profile is ready, run the setup command for the target client:
 
 ```bash
 # Cursor
-ai-hub-trade-mcp setup --client cursor --profile default
+ai-hub-trade-mcp setup --client cursor --profile merchant
 
 # Claude Desktop
-ai-hub-trade-mcp setup --client claude-desktop --profile default
+ai-hub-trade-mcp setup --client claude-desktop --profile merchant
 
 # Claude Code
-ai-hub-trade-mcp setup --client claude-code --profile default
+ai-hub-trade-mcp setup --client claude-code --profile merchant
 
 # Codex
-ai-hub-trade-mcp setup --client codex --profile default
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
 `setup` registers the installed MCP package using its absolute Node runtime and entrypoint, so the client does not depend on a global PATH. Credentials are not written into the client configuration; the MCP server continues to read the selected profile from `~/.ai-hub/config.toml`.
@@ -63,7 +66,7 @@ For Cursor and Claude Desktop, setup merges the existing JSON MCP configuration 
 You normally do not need to start the server yourself. The client starts it from its registered configuration. To run the local `stdio` server directly:
 
 ```bash
-ai-hub-trade-mcp --profile default
+ai-hub-trade-mcp --profile merchant
 ```
 
 The process waits for an MCP client over standard input and output, so seeing no interactive terminal output is expected. To show usage:
@@ -77,12 +80,12 @@ ai-hub-trade-mcp --help
 Create and register a separate profile for each platform connection:
 
 ```bash
-ai-hub config set --profile merchant-a --openapi-base-url https://merchant-a-openapi.example
+ai-hub config set --profile merchant-a --products spot,futures --openapi-base-url https://openapi.merchant-a.example
 ai-hub config set-credentials --profile merchant-a
 ai-hub-trade-mcp setup --client codex --profile merchant-a
 ```
 
-The registered MCP name includes the profile, for example `ai-hub-trade-mcp-merchant-a`, so tenant configurations are not confused.
+The registered MCP name includes the profile, for example `aihub-merchant-a`, so tenant configurations are not confused.
 
 ## Default tools
 
@@ -162,13 +165,13 @@ The required flow is: **prepare preview → show preview → wait for a new user
 Keep the default for most users:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile default
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
 Choose the full toolset only when required:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile default --toolset full
+ai-hub-trade-mcp setup --client codex --profile merchant --toolset full
 ```
 
 ### Response mode
@@ -181,7 +184,7 @@ ai-hub-trade-mcp setup --client codex --profile default --toolset full
 If a client cannot correctly read structured results, use compatibility mode:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile default --response-mode compat
+ai-hub-trade-mcp setup --client codex --profile merchant --response-mode compat
 ```
 
 ### Read-only mode
@@ -189,7 +192,7 @@ ai-hub-trade-mcp setup --client codex --profile default --response-mode compat
 To expose queries but no orders, cancellations, or transfers, start MCP in read-only mode:
 
 ```bash
-ai-hub-trade-mcp --profile default --read-only
+ai-hub-trade-mcp --profile merchant --read-only
 ```
 
 This mode does not register write-preview tools or `confirm_action`.

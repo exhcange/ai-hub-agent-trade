@@ -6,6 +6,11 @@ description: Query Futures contracts, rules and public market data through AI Hu
 
 # Ai Hub Futures Common
 
+## Unified merchant connections
+
+A single MCP server may support both Spot and Futures. Select the configured merchant by `system_get_capabilities`, including `products` and `productAccess`; never infer its product from the server name. Use product-specific tools on that same server. For CLI fallback, use the selected unified merchant profile for either product, replacing legacy `--profile spot` / `--profile futures` examples below. Never switch merchant profiles to recover from a failed request. Existing separate product profiles remain supported.
+
+
 Use `futures_ping`, `futures_time`, `futures_contracts`, `futures_depth`, `futures_ticker`, `futures_index`, and `futures_klines`. CLI equivalents are `ai-hub futures ping`, `time`, `contracts`, or `market depth|ticker|index|klines`, with `--profile futures`.
 
 Use exact contract names from the tenant contract list. Price, index price and mark price are distinct; do not turn unverified rates into percentages or annualized yields. The local fetch time is not a market-data timestamp. K-line intervals are 1min, 5min, 15min, 30min, 1h, 1day, 1week and 1month.

@@ -26,7 +26,7 @@ export class ToolWriteExecutor {
 
   public async prepare(name: string, input: unknown, context: ToolExecutionContext): Promise<PreparedAction> {
     const prepared = await this.registry.prepareWrite(name, input, context, this.confirmations, (action, payload) =>
-      unresolvedStore(context, this.unresolved).assertNoUnresolved(context.profile.name, action, payload));
+      unresolvedStore(context, this.unresolved).assertNoUnresolved(context.profile.stateProfileName ?? context.profile.name, action, payload));
     const tool = this.registry.byName(name);
     await this.audit.record({ event: "prepared", profile: context.profile.name, tool: name, confirmationId: prepared.confirmationId, requestHash: prepared.requestHash, requestId: context.requestId ?? createRequestId(), openApi: tool.openApiContract! });
     return prepared;
@@ -50,7 +50,7 @@ export class ToolWriteExecutor {
         if (RECONCILABLE_SPOT_ORDER_TOOLS.has(pending.action) && symbol && newClientOrderId && context.credentials) {
           try {
             const order = await context.api.getOrder({ symbol, newClientOrderId }, context.credentials);
-            await store.resolve(context.profile.name, symbol, newClientOrderId);
+            await store.resolve(context.profile.stateProfileName ?? context.profile.name, symbol, newClientOrderId);
             await this.audit.record({ event: "succeeded", ...entry });
             return { reconciled: true, writeOutcomeUnknown: false, reconciliationTool: "spot_get_order", symbol, newClientOrderId, order };
           } catch (_reconciliationError) {
@@ -64,7 +64,7 @@ export class ToolWriteExecutor {
           // The durable operation journal owns this reservation and its explicit resolution.
           throw error;
         }
-        await store.recordUnknown(context.profile.name, pending.action, pending.payload);
+        await store.recordUnknown(context.profile.stateProfileName ?? context.profile.name, pending.action, pending.payload);
         await this.audit.record({ event: "outcome_unknown", ...entry, errorCode: "AI_HUB_WRITE_RESULT_UNKNOWN" });
         throw new AiHubError(
           "AI_HUB_WRITE_RESULT_UNKNOWN",

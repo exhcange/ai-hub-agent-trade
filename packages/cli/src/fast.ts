@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   AI_HUB_RELEASE_VERSION,
   AiHubError,
+  ConfigStore,
   createRequestId,
   createToolExecutionContext,
   createToolRegistry,
@@ -19,7 +20,7 @@ import {
 
 export interface FastCliRuntime {
   execute?: (route: AiHubFastRoute, profile: string | undefined) => Promise<unknown>;
-  runAgent?: (prompt: string, profile: string | undefined) => number;
+  runAgent?: (prompt: string, profile: string | undefined) => number | Promise<number>;
   write?: (text: string) => void;
 }
 
@@ -54,40 +55,44 @@ function requestArguments(args: readonly string[]): string[] {
 }
 
 async function executeFastRoute(route: AiHubFastRoute, profile: string | undefined): Promise<unknown> {
+  const config = await new ConfigStore().read();
+  const selectedName = profile ?? config.default_profile;
+  const unified = config.profiles[selectedName]?.products ? selectedName : undefined;
   if (route.kind === "dual-balances") {
+    if (profile && !unified) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "A cross-product balance query with --profile requires a unified profile.");
     const reads = await Promise.allSettled([
-      createToolExecutionContext("spot").then((context) => createToolRegistry().execute(route.input.asset ? "account_get_asset_balance" : "account_list_balances", route.input, context, { readOnly: true })),
-      createToolExecutionContext("futures").then((context) => createToolRegistry().execute("futures_assets", route.input, context, { readOnly: true }))
+      createToolExecutionContext(unified ?? "spot", undefined, undefined, "spot").then((context) => createToolRegistry().execute(route.input.asset ? "account_get_asset_balance" : "account_list_balances", route.input, context, { readOnly: true })),
+      createToolExecutionContext(unified ?? "futures", undefined, undefined, "futures").then((context) => createToolRegistry().execute("futures_assets", route.input, context, { readOnly: true }))
     ]);
     if (reads.every((result) => result.status === "rejected")) throw new AiHubError("AI_HUB_BALANCE_QUERY_FAILED", "Both account queries failed; no balance result is available.");
     return { complete: reads.every((r) => r.status === "fulfilled"), accountPairing: "not_verified", ...Object.fromEntries(reads.map((r, index) => [index === 0 ? "spot" : "futures", r.status === "fulfilled" ? { ok: true, data: r.value } : { ok: false, message: "Account query failed; balance is not zero." }])) };
   }
   const selected = route.kind === "futures-assets" ? "futures" : "spot";
-  if (profile && profile !== selected) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", `This product route requires profile ${selected}.`);
-  const context = await createToolExecutionContext(selected);
+  const context = await createToolExecutionContext(unified ?? profile ?? selected, undefined, undefined, selected);
   return createToolRegistry().execute(route.toolName, route.input, context, { readOnly: true });
 }
 
-export function codexAgentArguments(prompt: string, profile: string | undefined): string[] {
+export function codexAgentArguments(prompt: string, profile: string | undefined, unified = false): string[] {
   const transfer = /划转|\btransfer\b/i.test(prompt);
   const explicitFutures = /合约|永续|\bfutures\b|\bperpetuals?\b/i.test(prompt);
   const dualBalances = !transfer && !explicitFutures && !/现货|\bspot\b/i.test(prompt) && /余额|资产|\bbalances?\b|\bassets?\b/i.test(prompt);
   const selectedProfile = !transfer && explicitFutures ? "futures" : "spot";
-  if (profile && profile !== selectedProfile) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", `This product route requires profile ${selectedProfile}.`);
-  const mcpArgs = ["--profile", selectedProfile, "--toolset", "default", "--response-mode", "compact"];
+  if (!unified && profile && profile !== selectedProfile) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", `This product route requires profile ${selectedProfile}.`);
+  const mcpArgs = ["--profile", unified ? profile! : selectedProfile, "--toolset", "default", "--response-mode", "compact"];
   const skillNames = ["ai-hub-spot", "ai-hub-spot-account", "ai-hub-spot-common", "ai-hub-spot-deposit-withdraw", "ai-hub-spot-order", "ai-hub-spot-sub-account"];
   const disabledSkills = skillNames
     .map((name) => `{ path = ${JSON.stringify(join(homedir(), ".agents", "skills", name, "SKILL.md"))}, enabled = false }`)
     .join(", ");
-  const extraServer = dualBalances ? [
+  const extraServer = dualBalances && !unified ? [
     "-c", `mcp_servers.aihub_futures.command=${JSON.stringify("ai-hub-trade-mcp")}`,
     "-c", `mcp_servers.aihub_futures.args=${JSON.stringify(["--profile", "futures", "--read-only", "--response-mode", "compact"])}`
   ] : [];
   const agentPrompt = [
     "Use only the configured AI Hub MCP server \"aihub\".",
-    ...(dualBalances ? ["The additional aihub_futures server is allowed for Futures reads. Query spot via aihub and futures via aihub_futures; show components separately without arithmetic totals. One-side failure means incomplete results, never zero balance."] : []),
+    ...(dualBalances && !unified ? ["The additional aihub_futures server is allowed for Futures reads. Query spot via aihub and futures via aihub_futures; show components separately without arithmetic totals. One-side failure means incomplete results, never zero balance."] : []),
+    ...(unified ? ["The aihub server supports both Spot and Futures. Select product-specific tools on this server; transfers use wallet tools. Query both balance views separately and preserve partial failures."] : []),
     "Do not read Skills, call any CLI or shell command, use web search, or use non-AIHub tools.",
-    "Spot-margin tools support spot margin only; route explicit Futures requests to Futures product tools. Never send a Futures request through spot tools. Transfers use the spot profile. If the configured server lacks the requested product, report the configuration gap.",
+    "Spot-margin tools support spot margin only; route explicit Futures requests to Futures product tools. Never send a Futures request through spot tools. Transfers use spot-side wallet tools. If the configured server lacks the requested product, report the configuration gap.",
     "For every spot-margin write, require the user to explicitly choose isolated or cross margin; never infer it.",
     "For writes, call only a prepare tool, show the preview, and stop. Never call confirm_action until a new user message explicitly confirms that exact preview.",
     `User request: ${prompt}`
@@ -113,8 +118,11 @@ export function codexAgentArguments(prompt: string, profile: string | undefined)
   ];
 }
 
-function runCodexAgent(prompt: string, profile: string | undefined): number {
-  const result: SpawnSyncReturns<string> = spawnSync("codex", codexAgentArguments(prompt, profile), {
+async function runCodexAgent(prompt: string, profile: string | undefined): Promise<number> {
+  const config = await new ConfigStore().read();
+  const selectedName = profile ?? config.default_profile;
+  const unified = Boolean(config.profiles[selectedName]?.products);
+  const result: SpawnSyncReturns<string> = spawnSync("codex", codexAgentArguments(prompt, unified ? selectedName : profile, unified), {
     encoding: "utf8",
     stdio: ["inherit", "pipe", "pipe"]
   });
@@ -155,7 +163,7 @@ export async function runFast(argv: string[], runtime: FastCliRuntime = {}): Pro
   if (noAgent) {
     throw new AiHubError("AI_HUB_FAST_ROUTE_NOT_FOUND", "The request is not supported by the deterministic fast path. Remove --no-agent to use the Codex fallback.");
   }
-  const status = (runtime.runAgent ?? runCodexAgent)(prompt, profile);
+  const status = await (runtime.runAgent ?? runCodexAgent)(prompt, profile);
   if (status !== 0) throw new AiHubError("AI_HUB_CODEX_AGENT_FAILED", `Codex Agent fallback exited with status ${status}.`);
 }
 

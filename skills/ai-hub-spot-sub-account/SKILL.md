@@ -6,6 +6,11 @@ description: Use this Skill when a user asks to list, inspect, create, configure
 
 # AI Hub Spot Sub-accounts
 
+## Unified merchant connections
+
+A single MCP server may support both Spot and Futures. Select the configured merchant by `system_get_capabilities`, including `products` and `productAccess`; never infer its product from the server name. Use product-specific tools on that same server. For CLI fallback, use the selected unified merchant profile for either product, replacing legacy `--profile spot` / `--profile futures` examples below. Never switch merchant profiles to recover from a failed request. Existing separate product profiles remain supported.
+
+
 Use this Skill for supported sub-account operations only. Do not assume a sub-account identifier, account type, transfer type, API key, IP address, or status value.
 
 ## MCP First

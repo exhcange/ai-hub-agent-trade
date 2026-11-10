@@ -1,5 +1,8 @@
 # AI Hub Agent Trade
 
+For one MCP server, shared Spot/Futures credentials, automatic domain derivation and migration, see [Unified MCP setup](docs/UNIFIED_MCP.md). Legacy separate-product profiles remain supported.
+
+
 Local CLI, MCP, and Skills for AI Hub spot and Futures trading integrations.
 
 For a combined local installation or migration, see [现货与合约安装使用说明（中文）](docs/INSTALL_SPOT_FUTURES.zh-CN.md). The offline Codex installer is `node scripts/install-local-products.mjs` (dry-run by default).
@@ -7,6 +10,18 @@ For a combined local installation or migration, see [现货与合约安装使用
 The Futures extension is implemented in this checkout and awaits live acceptance. See [Futures setup, migration and operating rules](docs/FUTURES.md), [operation mapping](docs/FUTURES_OPERATIONS.md), and [delivery and acceptance record](docs/FUTURES_DELIVERY.md).
 
 For low-latency natural-language reads, the CLI package also installs `aihub`. Requests such as `aihub show asset balances` and `aihub show BTCUSDT price` use a deterministic Core fast path and render the final result without an Agent. Requests outside the bounded fast surface fall back to a Codex `gpt-5.6-luna`/`low` Agent restricted to the configured AI Hub MCP server.
+
+## Install one connection for Spot and Futures
+
+```bash
+npm install -g @aihubspot/agent-trade-cli @aihubspot/agent-trade-mcp
+ai-hub config init
+ai-hub config set --profile merchant --products spot,futures --openapi-base-url https://openapi.example.com
+ai-hub config set-credentials --profile merchant
+ai-hub-trade-mcp setup --client codex --profile merchant
+```
+
+Use your merchant's spot OpenAPI URL. The Futures endpoint is derived automatically and the credentials are entered once. Install all twelve repository Skills if using Agent workflow guidance. Each client connection uses one combined-product stdio server; multiple sessions can still start multiple processes. Packages must include this unified-profile implementation; repository changes are not published to npm automatically.
 
 ## Implemented foundation
 
@@ -16,10 +31,10 @@ For low-latency natural-language reads, the CLI package also installs `aihub`. R
 - Bounded symbol overview, pagination, keyword search, and exact trading-rule lookup for responsive Agent interactions.
 - Compact single-symbol last-price reads through `market_get_last_price` / `ai-hub market price`.
 - Signed account, wallet, sub-account, isolated/cross spot-margin, and transfer read capabilities.
-- Local stdio MCP and CLI tools for single/batch spot orders, v2 isolated/cross spot-margin orders, wallet transfers and withdrawals, and sub-account administration. Futures operations and leverage settings use the separate `futures` command group and product profile.
+- Local stdio MCP and CLI tools for single/batch spot orders, v2 isolated/cross spot-margin orders, wallet transfers and withdrawals, and sub-account administration. Futures operations and leverage settings use the `futures` command group and the Futures context of the selected profile.
 - Shared Tool Registry for MCP and CLI schemas, validation, access controls, error codes, and handlers.
 - One-time shared preparation and confirmation. Preparation can query OpenAPI for validation but never sends the requested state-changing operation.
-- MCP read-only mode for exposing queries without order, cancellation, withdrawal, transfer, or confirmation capabilities. Use `ai-hub-trade-mcp --profile default --read-only`, or persist it with `ai-hub-trade-mcp setup --client <client> --profile default --read-only`.
+- MCP read-only mode for exposing queries without order, cancellation, withdrawal, transfer, or confirmation capabilities. Use `ai-hub-trade-mcp --profile merchant --read-only`, or persist it with `ai-hub-trade-mcp setup --client <client> --profile merchant --read-only`.
 
 ## Required confirmation boundary
 

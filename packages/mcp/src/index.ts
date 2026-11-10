@@ -17,8 +17,8 @@ function printUsage(): void {
   process.stdout.write(
     "AI Hub Agent Trade MCP\n\n" +
     "Usage:\n" +
-    "  ai-hub-trade-mcp [--profile <name>] [--toolset <default|full|transfer>] [--response-mode <compact|compat>] [--read-only]\n" +
-    "  ai-hub-trade-mcp setup --client <client> [--profile <name>] [--toolset <default|full|transfer>] [--response-mode <compact|compat>] [--read-only]\n\n" +
+    "  ai-hub-trade-mcp [--profile <name>] [--toolset <default|full|transfer>] [--response-mode <compact|compat>] [--read-only] [--spot-read-only] [--futures-read-only]\n" +
+    "  ai-hub-trade-mcp setup --client <client> [--profile <name>] [--toolset <default|full|transfer>] [--response-mode <compact|compat>] [--read-only] [--spot-read-only] [--futures-read-only]\n\n" +
     "The default command starts the local stdio MCP server.\n" +
     "Use setup to register it with Cursor, Claude Desktop, Claude Code, Codex, or OpenClaw.\n"
   );
@@ -49,7 +49,7 @@ export async function main(argv: string[]): Promise<void> {
     }
     const entrypoint = process.argv[1];
     if (!entrypoint) throw new AiHubError("AI_HUB_UNEXPECTED_ERROR", "Cannot locate the local MCP server entrypoint for client setup.");
-    runMcpSetup({ client: client as McpClientId, profile, toolset, responseMode, readOnly, launch: { command: process.execPath, args: [entrypoint] } });
+    runMcpSetup({ client: client as McpClientId, profile, toolset, responseMode, readOnly, spotReadOnly: argv.includes("--spot-read-only"), futuresReadOnly: argv.includes("--futures-read-only"), launch: { command: process.execPath, args: [entrypoint] } });
     return;
   }
   const profileName = readOption(argv, "--profile");
@@ -57,7 +57,7 @@ export async function main(argv: string[]): Promise<void> {
   const toolset = parseMcpToolset(readOption(argv, "--toolset"));
   const responseMode = parseMcpResponseMode(readOption(argv, "--response-mode"));
   const selected = await new ConfigStore().showProfile(profileName);
-  const server = createServer(selected.name, readOnly, toolset, responseMode, selected.product ?? "spot");
+  const server = createServer(selected.name, readOnly, toolset, responseMode, selected.products ? "unified" : selected.product ?? "spot", [ ...(argv.includes("--spot-read-only") ? ["spot" as const] : []), ...(argv.includes("--futures-read-only") ? ["futures" as const] : []) ]);
   await server.connect(new StdioServerTransport());
 }
 

@@ -1,5 +1,8 @@
 # Contract extension: project memory
 
+Latest owner-approved unified connection implementation: [Unified MCP design](UNIFIED_MCP_DESIGN.md). Unified merchant profiles supersede fixed spot/futures names while retaining legacy support.
+
+
 Recorded on 2026-09-14. This is a source-linked understanding record. The owner subsequently approved the consolidated design and explicitly authorized repository-only development; see ../docs/FUTURES_DELIVERY.md.
 
 Latest handoff: read [Futures design handoff and API scope review](FUTURES_DESIGN_HANDOFF.md) before using the draft scope below. It records the user-supplied published API, the verified 25 + 3 operation inventory, inclusion of four sensitive settings writes, exclusion of ticker_all, reported profile routing, and C01-C19 design history. These later scope decisions supersede earlier draft uncertainties; the subsequent explicit development approval supplies implementation authority.

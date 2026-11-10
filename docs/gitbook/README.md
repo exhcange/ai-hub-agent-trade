@@ -1,74 +1,87 @@
 # 01 Quick Start
 
-Use this page to install the CLI and MCP packages and create a local connection profile for your platform.
+Install the CLI and MCP packages, configure one merchant connection, and use Spot and Futures through one MCP server.
 
 ## Prerequisites
 
-* Node.js 20 or later.
-* A publicly reachable HTTPS OpenAPI endpoint for your tenant.
-* An API key and secret key with the permissions required for your workflow.
-* Cursor, Claude Desktop, Claude Code, or Codex if you plan to use MCP.
-* A Skills-compatible AI Agent client, or a client that can load a Skill folder manually, if you plan to use Skills.
+- npm and Node.js 20 or later.
+- Your merchant's public HTTPS spot OpenAPI endpoint, normally `https://openapi.example.com`.
+- One API key and secret key valid for both products, with the required permissions.
+- A supported MCP client: Cursor, Claude Desktop, Claude Code, Codex, or OpenClaw.
+- A Skills-compatible client, or support for loading Skill folders manually.
 
-{% hint style="warning" %}
-Create a dedicated API credential for AI Hub and follow least privilege: read-only permissions for query workflows, and only the specific trading or wallet permissions required for orders, cancellations, or transfers.
-{% endhint %}
-
-{% stepper %}
-{% step %}
-## Install the CLI and MCP packages
+## Install
 
 ```bash
 npm install -g @aihubspot/agent-trade-cli @aihubspot/agent-trade-mcp
-```
-
-Verify the installation:
-
-```bash
 ai-hub --help
 ai-hub-trade-mcp --help
 ```
-{% endstep %}
 
-{% step %}
-## Create a connection profile
+## Configure one merchant connection
 
-The following example uses default as the profile name. Replace the sample URL with the HTTPS OpenAPI endpoint provided for your platform.
+Replace the example URL with your merchant's spot OpenAPI endpoint. Do not use the website or App API address.
 
 ```bash
 ai-hub config init
-ai-hub config set --profile default --openapi-base-url https://your-openapi-domain
-ai-hub config set-credentials --profile default
+ai-hub config set --profile merchant --products spot,futures --openapi-base-url https://openapi.example.com
+ai-hub config set-credentials --profile merchant
+ai-hub config show --profile merchant
 ```
 
-`set-credentials` prompts separately for the API key and secret key. The values are not echoed in the terminal.
+The Futures endpoint is derived as `https://futuresopenapi.example.com`. Both endpoints are validated, and both products share the credentials entered once. Credential input is hidden. Never share keys in chat.
 
-Review the profile and test connectivity:
+For a nonstandard environment, add `--futures-base-url https://your-futures-api.example.com` to the configuration command. Changing either endpoint clears the shared credentials; configure them again only after checking the addresses.
+
+## Verify both products
 
 ```bash
-ai-hub config show --profile default
-ai-hub market ping --profile default
+ai-hub market ping --profile merchant
+ai-hub futures ping --profile merchant
+ai-hub futures time --profile merchant
+ai-hub market ticker --symbol BTCUSDT --profile merchant
+ai-hub futures contracts --profile merchant
+ai-hub futures account assets --profile merchant
+ai-hub futures account positions --profile merchant
 ```
-{% endstep %}
 
-{% step %}
-## Run your first market queries
+Public reads require no credentials. Account and order reads need API read permissions. Use the exact Futures contract identifiers returned by `contracts`.
+
+## Register one MCP server
+
+Choose the client you use:
 
 ```bash
-# Show a market summary.
-ai-hub market ticker-summary --quote-asset USDT --limit 20 --profile default
-
-# Retrieve the ticker for one exact symbol.
-ai-hub market ticker --symbol BTCUSDT --profile default
-
-# Retrieve price precision, quantity precision, and order minimums.
-ai-hub market symbol-info --symbol BTCUSDT --profile default
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
-{% endstep %}
-{% endstepper %}
+
+Replace `codex` with `cursor`, `claude-desktop`, `claude-code`, or `openclaw` as appropriate. Add `--read-only` for queries only. Reload the MCP connection; fully restart the client if an old process remains.
+
+The server `aihub-merchant` provides both products. Call `system_get_capabilities` and check `products`, `productAccess`, and `serviceVersion`. Spot tools use the spot endpoint; Futures tools use the Futures endpoint. Both transfer directions use spot wallet tools.
+
+## Install Skills
+
+```bash
+npx skills add exhcange/ai-hub-agent-trade
+```
+
+Select your client and all twelve spot/Futures Skills. Installing npm packages alone does not register MCP or install Skills.
+
+## Existing installations
+
+Separate `spot` and `futures` profiles remain supported. To merge them explicitly, stop the old MCP processes, run a dry run, then apply:
+
+```bash
+ai-hub config unify-products --profile merchant --spot-source spot --futures-source futures
+ai-hub config unify-products --profile merchant --spot-source spot --futures-source futures --apply
+ai-hub-trade-mcp setup --client codex --profile merchant
+```
+
+The source credentials must match and their domains must follow the automatic rule. Migration preserves unresolved operation state; old previews need to be prepared again. Verify the new server before removing only the old product registrations. Transfers require renewed operator-verified account pairing. See the [unified connection guide](unified-mcp.md) for details.
 
 ## Next steps
 
-* Use the terminal or scripts: [Command Line](03-command-line.md)
-* Connect an AI client: [MCP](02-mcp.md)
-* Install agent operating guidance: [Skills](04-skills.md)
+- [MCP](02-mcp.md)
+- [Command Line](03-command-line.md)
+- [Skills](04-skills.md)
+- [Security](05-security.md)

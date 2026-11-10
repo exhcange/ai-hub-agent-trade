@@ -55,3 +55,13 @@ test("--no-agent rejects requests outside the deterministic surface", async () =
   assert.ok(balance.some((arg) => arg.startsWith("mcp_servers.aihub_futures.args=")));
   assert.throws(() => codexAgentArguments("合约下单", "spot"), { code: "AI_HUB_PRODUCT_MISMATCH" });
 });
+
+
+test("unified Agent fallback registers a single server for dual-product requests", () => {
+  for (const prompt of ["分析我的余额", "合约订单", "从合约划转到现货"]) {
+    const args = codexAgentArguments(prompt, "merchant", true);
+    assert.ok(args.some((arg) => arg.startsWith("mcp_servers.aihub.args=") && arg.includes('"merchant"')));
+    assert.equal(args.some((arg) => arg.startsWith("mcp_servers.aihub_futures.")), false);
+    assert.match(args.at(-1) ?? "", /supports both Spot and Futures/);
+  }
+});

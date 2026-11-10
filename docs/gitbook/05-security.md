@@ -1,5 +1,8 @@
 # 05 Security
 
+For one MCP server with shared Spot/Futures credentials and automatic domain derivation, see [Unified connections](unified-mcp.md). With a unified profile, use the same merchant profile for both products; separate-product examples remain valid for legacy installations.
+
+
 ## Credential security
 
 Create a dedicated API credential for AI Hub and follow least privilege.
@@ -55,13 +58,13 @@ CLI example:
 ai-hub spot order market-sell \
   --symbol ETHUSDT \
   --base-quantity 0.5 \
-  --profile default
+  --profile merchant
 
 # Step 2: run only after a new, explicit user confirmation.
 ai-hub confirm \
   --confirmation-id <confirmation-id> \
   --user-confirmation "yes" \
-  --profile default
+  --profile merchant
 ```
 
 MCP uses the same boundary: call a `*_prepare_*` tool, display the preview, and stop. Only after a new user confirmation message may the Agent call `confirm_action`. An Agent must not generate, infer, or reuse confirmation text on its own.

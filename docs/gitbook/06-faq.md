@@ -1,5 +1,8 @@
 # 06 FAQ
 
+For one MCP server with shared Spot/Futures credentials and automatic domain derivation, see [Unified connections](unified-mcp.md). With a unified profile, use the same merchant profile for both products; separate-product examples remain valid for legacy installations.
+
+
 <details>
 
 <summary>Why does <code>ai-hub-trade-mcp</code> appear to produce no output?</summary>
@@ -29,7 +32,7 @@ Say “spend 100 USDT to market-buy ETH,” or use a limit order with an exact E
 `2` is an Isolated Margin account. Use `5` for a Derivatives account:
 
 ```bash
-ai-hub wallet transfer --from-account-type 1 --to-account-type 5 --coin-symbol USDT --amount 10 --profile default
+ai-hub wallet transfer --from-account-type 1 --to-account-type 5 --coin-symbol USDT --amount 10 --profile merchant
 ```
 
 </details>

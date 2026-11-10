@@ -1,6 +1,21 @@
 # AI Hub Agent Trade MCP
 
-Install with `npm install -g @aihubspot/agent-trade-mcp`, then start `ai-hub-trade-mcp --profile default`. Both `default` and `full` expose every supported Core capability; the names remain only for configuration compatibility. Read responses use one stable parseable envelope in both MCP text and structured content.
+One merchant profile provides Spot and Futures through one local stdio MCP server, with a shared API key/secret pair. Install both packages so the CLI can configure the connection:
+
+```bash
+npm install -g @aihubspot/agent-trade-cli @aihubspot/agent-trade-mcp
+ai-hub config init
+ai-hub config set --profile merchant --products spot,futures --openapi-base-url https://openapi.example.com
+ai-hub config set-credentials --profile merchant
+ai-hub config show --profile merchant
+ai-hub-trade-mcp setup --client codex --profile merchant
+```
+
+Replace the spot URL with your merchant's endpoint and choose the client you use. `openapi.example.com` derives `futuresopenapi.example.com`; configure credentials once for both products. For a nonstandard endpoint, add `--futures-base-url <https-url>` to `config set`. The `codex`, `claude` or `openclaw` CLI must be on PATH when using its corresponding setup adapter.
+
+The single registration is `aihub-merchant`. Check `system_get_capabilities`: `products` lists `spot` and `futures`, while `productAccess` reports each product's read-only policy. Each client connection starts its own stdio process; one registration does not guarantee a single operating-system process across all open sessions.
+
+`default` and `full` are compatibility toolset names, not product profiles. Both expose supported tools for the selected connection, subject to read-only restrictions. Read results retain the same parseable envelope in text and structured content.
 
 This package provides a local stdio MCP server. State-changing operations require a preview and a new explicit user confirmation.
 
@@ -13,14 +28,14 @@ It reads the same local profile as the CLI from `~/.ai-hub/config.toml`. The API
 Register the local stdio MCP server with one supported client. The setup command is the only client-configuration entry point in this phase:
 
 ```bash
-ai-hub-trade-mcp setup --client cursor --profile default
-ai-hub-trade-mcp setup --client claude-desktop --profile default
-ai-hub-trade-mcp setup --client claude-code --profile default
-ai-hub-trade-mcp setup --client codex --profile default
-ai-hub-trade-mcp setup --client openclaw --profile default
-ai-hub-trade-mcp setup --client codex --profile default --toolset full
-ai-hub-trade-mcp setup --client codex --profile default --response-mode compat
-ai-hub-trade-mcp setup --client codex --profile default --read-only
+ai-hub-trade-mcp setup --client cursor --profile merchant
+ai-hub-trade-mcp setup --client claude-desktop --profile merchant
+ai-hub-trade-mcp setup --client claude-code --profile merchant
+ai-hub-trade-mcp setup --client codex --profile merchant
+ai-hub-trade-mcp setup --client openclaw --profile merchant
+ai-hub-trade-mcp setup --client codex --profile merchant --toolset full
+ai-hub-trade-mcp setup --client codex --profile merchant --response-mode compat
+ai-hub-trade-mcp setup --client codex --profile merchant --read-only
 ```
 
 Setup registers the currently installed MCP binary through its absolute Node runtime and entrypoint path, so desktop clients do not depend on a global PATH or an unpublished `npx` package. Cursor and Claude Desktop configurations are merged with existing MCP servers through their JSON configurations. Claude Code, Codex, and OpenClaw are registered through their official CLIs; Claude Code uses user scope. Existing JSON configurations are validated, atomically updated, and backed up before their first modification. The setup command stores no API credentials; the MCP server continues to read its profile from `~/.ai-hub/config.toml`.
@@ -32,13 +47,13 @@ Setup registers the default profile as `aihub`; a named profile becomes `aihub-<
 To expose queries while removing every order, cancellation, withdrawal, transfer, and other state-changing capability, start the server with:
 
 ```bash
-ai-hub-trade-mcp --profile default --read-only
+ai-hub-trade-mcp --profile merchant --read-only
 ```
 
 For a configured client, persist the same restriction through setup:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile default --read-only
+ai-hub-trade-mcp setup --client codex --profile merchant --read-only
 ```
 
 Replace `codex` with `cursor`, `claude-desktop`, `claude-code`, or `openclaw` as needed. Read-only mode removes all `*_prepare_*` Tools and `confirm_action`; unavailable writes fail locally and do not send an OpenAPI request.
@@ -81,3 +96,28 @@ Use these tools for requests that would otherwise return a broad market payload:
 - `market_get_klines_summary`: period change, high/low, latest candle, and up to 50 candles. It defaults to `60min`; formal intervals are `1min`, `5min`, `15min`, `30min`, `60min`, `1day`, `1week`, and `1month`.
 
 All Toolsets expose bounded and advanced functions alike. Every list is limited to 50 rows; raw symbols are paged with `offset` and `nextOffset`.
+
+
+## Per-product read-only access
+
+```bash
+# Spot query-only; Futures supports confirmed writes.
+ai-hub-trade-mcp setup --client codex --profile merchant --spot-read-only
+
+# Futures query-only; Spot supports confirmed writes.
+ai-hub-trade-mcp setup --client codex --profile merchant --futures-read-only
+```
+
+Global `--read-only` restricts both products. Spot write permissions also control Spot/Futures transfers in either direction. Transfers require operator-verified account pairing and the existing preview/new-confirmation flow.
+
+## Legacy migration
+
+Old single-product profiles are supported. Stop their MCP connections before merging:
+
+```bash
+ai-hub config unify-products --profile merchant --spot-source spot --futures-source futures
+ai-hub config unify-products --profile merchant --spot-source spot --futures-source futures --apply
+ai-hub-trade-mcp setup --client codex --profile merchant
+```
+
+The first command is a dry run. The sources must use matching credentials and corresponding domain names. Migration keeps unresolved-operation protections and requires new previews and renewed transfer pairing. Remove the old product registrations after verifying the new unified registration. Setup does not remove them automatically.

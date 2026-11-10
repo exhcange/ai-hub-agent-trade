@@ -1,5 +1,8 @@
 # 04 Skills
 
+For one MCP server with shared Spot/Futures credentials and automatic domain derivation, see [Unified connections](unified-mcp.md). With a unified profile, use the same merchant profile for both products; separate-product examples remain valid for legacy installations.
+
+
 Skills are Markdown operating rules for AI Agents. They tell an Agent when to call the `ai-hub` CLI, how to pass parameters, and when it must stop for human confirmation.
 
 Skills and MCP are independent:
@@ -37,7 +40,7 @@ Use AI Hub to show the first 20 order-book levels for BTCUSDT.
 ```
 
 ```
-Use AI Hub to show my available ETH balance with profile default.
+Use AI Hub to show my available ETH balance with profile merchant.
 ```
 
 ```

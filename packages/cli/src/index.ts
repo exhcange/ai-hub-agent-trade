@@ -8,13 +8,14 @@ function printHelp(): void {
 
 Usage:
   ai-hub config init
-  ai-hub config set --profile <name> --openapi-base-url <https-url> [--product spot|futures]
+  ai-hub config set --profile <name> --openapi-base-url <https-url> [--product spot|futures | --products spot,futures] [--futures-base-url <https-url>]
   ai-hub config set-credentials --profile <name>
   ai-hub config show [--profile <name>]
   ai-hub config path
   ai-hub config remove --profile <name>
+  ai-hub config unify-products --profile <new-name> --spot-source <name> --futures-source <name> [--apply]
   ai-hub config migrate-products --spot-source <name> --futures-source <name> [--apply]
-  ai-hub config pair-products --evidence-id <id> --operator-verified
+  ai-hub config pair-products [--profile <unified-name>] --evidence-id <id> --operator-verified
   ai-hub futures <ping|time|contracts|market|account|order|trade> [options]
   ai-hub futures operation-status [--transfer] [--profile <name>]
   ai-hub futures resolve-operation --outcome <executed|not-executed> --evidence-id <id> --operator-verified [--operation-id <id>] [--transfer]
@@ -175,9 +176,12 @@ async function runTool(args: string[], profileName: string | undefined, requestI
   }
   if (args[0] === "futures" && ["operation-status", "resolve-operation"].includes(args[1] ?? "")) {
     const transfer = args.includes("--transfer");
-    const selected = await new ConfigStore().showProfile(profileName ?? (transfer ? "spot" : "futures"));
+    const store = new ConfigStore();
+    const config = await store.read();
+    const selectedName = profileName ?? (config.profiles[config.default_profile]?.products ? config.default_profile : transfer ? "spot" : "futures");
+    const selected = await store.showProfile(selectedName, transfer ? "spot" : "futures");
     if (selected.product !== (transfer ? "spot" : "futures")) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "A Futures profile is required.");
-    const binding = `${selected.name}|${selected.openApiBaseUrl}|${transfer ? "transfer" : "futures"}`, state = new FuturesWriteState();
+    const binding = `${selected.stateProfileName ?? selected.name}|${selected.openApiBaseUrl}|${transfer ? "transfer" : "futures"}`, state = new FuturesWriteState();
     if (args[1] === "operation-status") { json(await state.inspect(binding)); return; }
     const outcome = optionValue(args, "--outcome"), evidenceId = optionValue(args, "--evidence-id");
     if (!["executed", "not-executed"].includes(outcome ?? "") || !evidenceId || !args.includes("--operator-verified")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Resolution requires --outcome executed|not-executed, --evidence-id and --operator-verified after authoritative verification.");
@@ -189,7 +193,9 @@ async function runTool(args: string[], profileName: string | undefined, requestI
   const tool = findTool(commandArgs);
   if (!tool) throw new AiHubError("AI_HUB_UNKNOWN_COMMAND", "Unknown API command. Run ai-hub --help for available command groups.");
   const input = parseToolInput(tool, commandArgs.slice(tool.cliPath.length));
-  const context = await createToolExecutionContext(profileName ?? (tool.product === "futures" ? "futures" : "spot"), undefined, requestId);
+  const config = await new ConfigStore().read();
+  const selectedName = profileName ?? (config.profiles[config.default_profile]?.products ? config.default_profile : tool.product === "futures" ? "futures" : "spot");
+  const context = await createToolExecutionContext(selectedName, undefined, requestId, tool.product ?? "spot");
   if (tool.operation === "read") {
     json(await registry.execute(tool.name, input, context));
     return;
@@ -213,8 +219,12 @@ async function runConfirmation(args: string[], profileName: string | undefined, 
   if (args.length !== 5 || args[0] !== "confirm" || args[1] !== "--confirmation-id" || args[2] !== confirmationId || args[3] !== "--user-confirmation" || args[4] !== userConfirmation) {
     throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "confirm accepts only --confirmation-id and --user-confirmation, plus --profile.");
   }
-  const context = await createToolExecutionContext(profileName, undefined, requestId);
-  json(await new ToolWriteExecutor(createToolRegistry(), new FileConfirmationStore()).confirm(confirmationId, userConfirmation, context));
+  const confirmations = new FileConfirmationStore();
+  const route = await confirmations.routing(confirmationId);
+  const selected = await new ConfigStore().showProfile(profileName);
+  if (route.profile !== selected.name) throw new AiHubError("AI_HUB_CONFIRMATION_CONTEXT_CHANGED", "Confirmation belongs to another profile.");
+  const context = await createToolExecutionContext(selected.name, undefined, requestId, route.product);
+  json(await new ToolWriteExecutor(createToolRegistry(), confirmations).confirm(confirmationId, userConfirmation, context));
 }
 
 export async function run(argv: string[], requestId = createRequestId()): Promise<void> {
@@ -246,7 +256,13 @@ export async function run(argv: string[], requestId = createRequestId()): Promis
     case "pair-products": {
       const evidenceId = optionValue(argv, "--evidence-id");
       if (!evidenceId || !argv.includes("--operator-verified")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Pairing requires authoritative account verification followed by --evidence-id and --operator-verified.");
-      json(await store.pairProducts(evidenceId)); return;
+      json(await store.pairProducts(evidenceId, profile)); return;
+    }
+    case "unify-products": {
+      const spot = optionValue(argv, "--spot-source"), futures = optionValue(argv, "--futures-source");
+      if (!profile || !spot || !futures) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Unification requires a new --profile, --spot-source and --futures-source; omit --apply for a dry run.");
+      json(await store.unifyProfiles(profile, { spot, futures }, argv.includes("--apply")));
+      return;
     }
     case "migrate-products": {
       const spotSource = optionValue(argv, "--spot-source"), futuresSource = optionValue(argv, "--futures-source");
@@ -262,6 +278,13 @@ export async function run(argv: string[], requestId = createRequestId()): Promis
       if (!profile || !openApiBaseUrl) {
         throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "config set requires --profile and --openapi-base-url.");
       }
+      const products = optionValue(argv, "--products");
+      if (products !== undefined) {
+        if (products !== "spot,futures" || optionValue(argv, "--product")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Use --products spot,futures without --product.");
+        json(await store.setUnifiedProfile(profile, openApiBaseUrl, optionValue(argv, "--futures-base-url")));
+        return;
+      }
+      if (optionValue(argv, "--futures-base-url")) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "--futures-base-url requires --products spot,futures.");
       json(await store.setProfile(profile, openApiBaseUrl, optionValue(argv, "--product") === undefined ? undefined : validateProduct(optionValue(argv, "--product"))));
       return;
     }
@@ -276,7 +299,7 @@ export async function run(argv: string[], requestId = createRequestId()): Promis
     }
     case "show": {
       const resolved = await store.showProfile(profile);
-      json({ ...resolved, credentialConfigured: Boolean(await store.getCredentials(profile)), configPath: configFilePath() });
+      json({ ...resolved, ...(resolved.products ? { futuresBaseUrl: (await store.showProfile(profile, "futures")).openApiBaseUrl } : {}), credentialConfigured: Boolean(await store.getCredentials(profile)), configPath: configFilePath() });
       return;
     }
     case "path":

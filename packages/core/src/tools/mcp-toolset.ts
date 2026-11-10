@@ -32,13 +32,13 @@ export function selectMcpToolset(tools: readonly ToolSpec[], _toolset: McpToolse
       validate: (input: unknown) => { const valid = tool.validate(input); check(valid); return valid; },
       preflight: async (input: Record<string, unknown>, context: Parameters<ToolSpec["handler"]>[1]) => {
         check(input);
-        if (tool.operation === "write" && (context.profile.name !== "spot" || !context.profile.accountPairing)) throw new AiHubError("AI_HUB_ACCOUNT_PAIRING_REQUIRED", "Verify and bind the spot/Futures account pairing before transferring.");
+        if (tool.operation === "write" && ((context.profile.name !== "spot" && !context.profile.products) || (context.profile.product ?? "spot") !== "spot" || !context.profile.accountPairing)) throw new AiHubError("AI_HUB_ACCOUNT_PAIRING_REQUIRED", "Verify and bind the spot/Futures account pairing before transferring.");
         return tool.preflight ? tool.preflight(input, context) : input;
       },
       handler: async (input: Record<string, unknown>, context: Parameters<ToolSpec["handler"]>[1]) => {
         check(input);
         if (tool.operation !== "write") return tool.handler(input, context);
-        if (context.profile.name !== "spot" || !context.profile.accountPairing) throw new AiHubError("AI_HUB_ACCOUNT_PAIRING_REQUIRED", "The verified account pairing is missing or changed.");
+        if ((context.profile.name !== "spot" && !context.profile.products) || (context.profile.product ?? "spot") !== "spot" || !context.profile.accountPairing) throw new AiHubError("AI_HUB_ACCOUNT_PAIRING_REQUIRED", "The verified account pairing is missing or changed.");
         return tool.handler(input, context);
       }
     };
