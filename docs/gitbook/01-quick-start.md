@@ -31,7 +31,7 @@ ai-hub config show --profile merchant
 
 The Futures endpoint is derived as `https://futuresopenapi.example.com`. Both endpoints are validated, and both products share the credentials entered once. Credential input is hidden. Never share keys in chat.
 
-For a nonstandard environment, add `--futures-base-url https://your-futures-api.example.com` to the configuration command. Changing either endpoint clears the shared credentials; configure them again only after checking the addresses.
+For a nonstandard environment, add `--futures-base-url https://your-futures-api.example.com` to the configuration command. Changing either endpoint clears the configured credentials; configure them again only after checking the addresses.
 
 ## Verify both products
 
@@ -67,17 +67,6 @@ npx skills add exhcange/ai-hub-agent-trade
 
 Select your client and all twelve spot/Futures Skills. Installing npm packages alone does not register MCP or install Skills.
 
-## Existing installations
-
-Separate `spot` and `futures` profiles remain supported. To merge them explicitly, stop the old MCP processes, run a dry run, then apply:
-
-```bash
-ai-hub config unify-products --profile merchant --spot-source spot --futures-source futures
-ai-hub config unify-products --profile merchant --spot-source spot --futures-source futures --apply
-ai-hub-trade-mcp setup --client codex --profile merchant
-```
-
-The source credentials must match and their domains must follow the automatic rule. Migration preserves unresolved operation state; old previews need to be prepared again. Verify the new server before removing only the old product registrations. Transfers require renewed operator-verified account pairing. See the [unified connection guide](unified-mcp.md) for details.
 
 ## Next steps
 
