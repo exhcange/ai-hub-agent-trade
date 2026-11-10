@@ -1,6 +1,6 @@
 ---
 name: ai-hub-futures-common
-version: "0.1.30"
+version: "0.1.31"
 description: Query Futures contracts, rules and public market data through AI Hub.
 ---
 

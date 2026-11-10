@@ -1,6 +1,6 @@
 # AI Hub Agent Skills
 
-Release: **0.1.30**. English-language Skills for supported AI Hub spot, isolated/cross spot-margin, and Futures workflows. When MCP and CLI are both installed, use the matching MCP tool first; use CLI only when MCP is unavailable before dispatch.
+Release: **0.1.31**. English-language Skills for supported AI Hub spot, isolated/cross spot-margin, and Futures workflows. When MCP and CLI are both installed, use the matching MCP tool first; use CLI only when MCP is unavailable before dispatch.
 
 ## Skills
 
@@ -24,21 +24,22 @@ Release: **0.1.30**. English-language Skills for supported AI Hub spot, isolated
 Requires Node.js 20 or later.
 
 ```bash
-npm install -g @aihubspot/agent-trade-cli@0.1.30 @aihubspot/agent-trade-mcp@0.1.30
+npm install -g @aihubspot/agent-trade-cli@0.1.31 @aihubspot/agent-trade-mcp@0.1.31
 npx skills add exhcange/ai-hub-agent-skills
 ```
 
-Install Skills and register MCP separately. Create the fixed product profiles before authenticated workflows:
+Install Skills and register MCP separately. To use one MCP connection for both products, configure a unified merchant profile:
 
 ```bash
 ai-hub config init
-ai-hub config set --profile spot --product spot --openapi-base-url https://your-spot-openapi-domain
-ai-hub config set-credentials --profile spot
-ai-hub config set --profile futures --product futures --openapi-base-url https://your-futures-openapi-domain
-ai-hub config set-credentials --profile futures
+ai-hub config set --profile merchant --products spot,futures --openapi-base-url https://openapi.example.com
+ai-hub config set-credentials --profile merchant
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
-Credentials are entered locally. Never request or expose API credentials in chat or commit local profile files. Register each product's MCP server with its corresponding profile. Use `--read-only` when only queries are required. Transfers use the spot profile and require operator-verified account pairing before writes.
+Replace the example domain with your merchant's Spot OpenAPI domain. For endpoints that do not follow the standard naming rule, provide `--futures-base-url` explicitly. Existing separate Spot and Futures profiles remain supported. Upgrade CLI and MCP together before creating or migrating to a unified profile.
+
+Enter credentials locally and never share them in chat or commit local profile files. Use `--read-only` for query-only access. Transfers use the Spot endpoint and require operator-verified account pairing before writes. See the [unified MCP guide](https://github.com/exhcange/ai-hub-agent-trade/blob/master/docs/UNIFIED_MCP.md) for migration and product-level access controls.
 
 See the [client repository](https://github.com/exhcange/ai-hub-agent-trade) and [operating guide](https://exchangedocsv2.gitbook.io/aihub) for MCP setup and supported commands.
 

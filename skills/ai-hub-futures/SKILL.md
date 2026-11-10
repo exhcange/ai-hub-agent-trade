@@ -1,6 +1,6 @@
 ---
 name: ai-hub-futures
-version: "0.1.30"
+version: "0.1.31"
 description: Route Futures account and trading requests to the installed AI Hub tools.
 ---
 
