@@ -6,11 +6,16 @@ description: Use this Skill for supported AI Hub spot-market, isolated or cross 
 
 # AI Hub Spot
 
+## Unified merchant connections
+
+A single MCP server may support both Spot and Futures. Select the configured merchant by `system_get_capabilities`, including `products` and `productAccess`; never infer its product from the server name. Use product-specific tools on that same server. For CLI fallback, use the selected unified merchant profile for either product, replacing legacy `--profile spot` / `--profile futures` examples below. Never switch merchant profiles to recover from a failed request. Existing separate product profiles remain supported.
+
+
 Route supported spot-account requests to the matching MCP Tool when AI Hub MCP is available. Use the `ai-hub` CLI only as an MCP fallback. Do not invent commands or capabilities outside the installed integration.
 
-AI Hub margin means isolated or cross **spot margin only**. For explicit Futures requests, route to the installed ai-hub-futures Skill and futures profile; do not reinterpret them as spot margin. An explicit leverage multiplier such as `10x` is not an available order parameter. Explain that boundary and ask for the supported spot-margin fields instead.
+AI Hub margin means isolated or cross **spot margin only**. For explicit Futures requests, route to the installed ai-hub-futures Skill and the selected connection’s Futures tools; do not reinterpret them as spot margin. An explicit leverage multiplier such as `10x` is not an available order parameter. Explain that boundary and ask for the supported spot-margin fields instead.
 
-For unspecified balances, query the fixed spot and futures profiles separately, preserving errors and avoiding cross-product totals. Explicit spot requests use spot; never fall back to smoke/default.
+For unspecified balances, query Spot and Futures views separately on the selected merchant connection, preserving errors and avoiding cross-product totals. Explicit spot requests use spot tools on the selected connection; never fall back to smoke/default.
 
 ## MCP First
 

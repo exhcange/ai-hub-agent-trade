@@ -18,13 +18,17 @@ export function validateProduct(value: unknown): Product {
 
 export interface TenantProfile {
   product?: Product;
+  products?: Product[];
+  futures_base_url?: string;
+  state_profile_names?: Record<Product, string>;
+  pairing?: { version: string; evidenceId: string };
   openapi_base_url: string;
   api_key?: string;
   secret_key?: string;
 }
 
 export interface LocalConfig {
-  version: 1;
+  version: 1 | 2;
   default_profile: string;
   profiles: Record<string, TenantProfile>;
   account_pairing?: { spotVersion: string; futuresVersion: string; evidenceId: string };
@@ -34,6 +38,8 @@ export interface ResolvedProfile {
   accountPairing?: { source: "operator-verified"; evidenceId: string };
   product?: Product;
   name: string;
+  products?: Product[];
+  stateProfileName?: string;
   openApiBaseUrl: string;
   configVersion: string;
 }
@@ -101,6 +107,16 @@ export async function normalizeOpenApiBaseUrl(value: string): Promise<string> {
   return url.toString().replace(/\/$/, "");
 }
 
+export function deriveFuturesBaseUrl(value: string): string {
+  let url: URL;
+  try { url = new URL(value); } catch { throw new AiHubError("AI_HUB_INVALID_OPENAPI_URL", "A valid spot OpenAPI URL is required."); }
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.port || !url.hostname.startsWith("openapi.") || url.hostname.slice(8).split(".").length < 2 || !["", "/"].includes(url.pathname)) {
+    throw new AiHubError("AI_HUB_INVALID_OPENAPI_URL", "Automatic derivation requires https://openapi.<merchant-domain> without a path or port; provide an explicit Futures URL otherwise.");
+  }
+  url.hostname = `futuresopenapi.${url.hostname.slice(8)}`;
+  return url.origin;
+}
+
 function defaultConfig(): LocalConfig {
   return { version: 1, default_profile: "default", profiles: {} };
 }
@@ -113,8 +129,8 @@ function parseConfig(text: string): LocalConfig {
     throw new AiHubError("AI_HUB_CONFIG_PARSE_ERROR", `Cannot parse config.toml: ${error instanceof Error ? error.message : "unknown error"}`);
   }
   const raw = parsed as Partial<LocalConfig>;
-  if (raw.version !== 1 || typeof raw.default_profile !== "string" || !raw.profiles || typeof raw.profiles !== "object") {
-    throw new AiHubError("AI_HUB_CONFIG_INVALID", "config.toml must contain version = 1, default_profile, and profiles.");
+  if ((raw.version !== 1 && raw.version !== 2) || typeof raw.default_profile !== "string" || !raw.profiles || typeof raw.profiles !== "object") {
+    throw new AiHubError("AI_HUB_CONFIG_INVALID", "config.toml must contain supported version = 1 or 2, default_profile, and profiles.");
   }
   return raw as LocalConfig;
 }
@@ -147,6 +163,7 @@ export class ConfigStore {
     const config = await this.read();
     const normalizedUrl = await normalizeOpenApiBaseUrl(openApiBaseUrl);
     const existing = config.profiles[name];
+    if (existing?.products) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Update unified profiles with --products spot,futures.");
     const keepCredentials = existing?.openapi_base_url === normalizedUrl;
     config.profiles[name] = {
       product: validateProduct(product ?? existing?.product),
@@ -159,9 +176,50 @@ export class ConfigStore {
     return this.resolveFrom(config, name);
   }
 
-  public async showProfile(requestedName?: string): Promise<ResolvedProfile> {
+  public async setUnifiedProfile(name: string, spotUrl: string, futuresUrl?: string): Promise<ResolvedProfile> {
+    validateProfileName(name);
+    const spot = await normalizeOpenApiBaseUrl(spotUrl);
+    const futures = await normalizeOpenApiBaseUrl(futuresUrl ?? deriveFuturesBaseUrl(spot));
+    if (new URL(spot).origin === new URL(futures).origin) throw new AiHubError("AI_HUB_INVALID_OPENAPI_URL", "Spot and Futures endpoints must have distinct origins.");
     const config = await this.read();
-    return this.resolveFrom(config, requestedName ?? config.default_profile);
+    const previous = config.profiles[name];
+    const unchanged = previous?.products?.join(",") === "spot,futures" && previous.openapi_base_url === spot && previous.futures_base_url === futures;
+    config.version = 2;
+    config.profiles[name] = { product: "spot", products: ["spot", "futures"], openapi_base_url: spot, futures_base_url: futures,
+      ...(previous?.state_profile_names ? { state_profile_names: previous.state_profile_names } : {}),
+      ...(unchanged ? { api_key: previous.api_key, secret_key: previous.secret_key, pairing: previous.pairing } : {}) };
+    if (Object.keys(config.profiles).length === 1) config.default_profile = name;
+    await this.write(config);
+    return this.resolveFrom(config, name);
+  }
+
+  /** Merge only an explicitly selected matching credential pair; preserve legacy durable-state identities. */
+  public async unifyProfiles(name: string, sources: { spot: string; futures: string }, apply = false): Promise<{ applied: boolean; profile: string; products: Product[] }> {
+    validateProfileName(name);
+    if (sources.spot === sources.futures || name === sources.spot || name === sources.futures) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Use a new target name and two distinct source profiles.");
+    const config = await this.read();
+    if (config.profiles[name]) throw new AiHubError("AI_HUB_PROFILE_EXISTS", "The target profile already exists.");
+    const spot = this.profileFrom(config, sources.spot), futures = this.profileFrom(config, sources.futures);
+    if (spot.products || futures.products || validateProduct(spot.product) !== "spot" || validateProduct(futures.product) !== "futures") throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "Select one legacy spot profile and one legacy Futures profile.");
+    const left = loadStoredCredentials(spot.api_key, spot.secret_key), right = loadStoredCredentials(futures.api_key, futures.secret_key);
+    if (!left || !right || left.credentialVersion !== right.credentialVersion) throw new AiHubError("AI_HUB_CREDENTIAL_MISMATCH", "Both source profiles must have identical configured credentials.");
+    if (deriveFuturesBaseUrl(spot.openapi_base_url) !== futures.openapi_base_url) throw new AiHubError("AI_HUB_INVALID_OPENAPI_URL", "Source endpoints do not match the automatic derivation rule; configure a separate unified profile explicitly instead.");
+    if (apply) {
+      config.version = 2;
+      config.profiles[name] = { product: "spot", products: ["spot", "futures"], openapi_base_url: spot.openapi_base_url,
+        futures_base_url: futures.openapi_base_url, api_key: spot.api_key, secret_key: spot.secret_key,
+        state_profile_names: { spot: sources.spot, futures: sources.futures } };
+      delete config.profiles[sources.spot]; delete config.profiles[sources.futures];
+      if ([sources.spot, sources.futures].includes(config.default_profile)) config.default_profile = name;
+      delete config.account_pairing;
+      await this.write(config);
+    }
+    return { applied: apply, profile: name, products: ["spot", "futures"] };
+  }
+
+  public async showProfile(requestedName?: string, product?: Product): Promise<ResolvedProfile> {
+    const config = await this.read();
+    return this.resolveFrom(config, requestedName ?? config.default_profile, product);
   }
 
   public async getCredentials(requestedName?: string): Promise<LoadedCredentials | undefined> {
@@ -176,20 +234,28 @@ export class ConfigStore {
    * This does not cache across requests, so an on-disk profile change is still
    * visible to the very next CLI command or MCP Tool call.
    */
-  public async resolveProfileWithCredentials(requestedName?: string): Promise<ResolvedProfileWithCredentials> {
+  public async resolveProfileWithCredentials(requestedName?: string, product?: Product): Promise<ResolvedProfileWithCredentials> {
     const config = await this.read();
     const name = requestedName ?? config.default_profile;
     const rawProfile = this.profileFrom(config, name);
     return {
-      profile: this.resolveFrom(config, name),
+      profile: this.resolveFrom(config, name, product),
       credentials: loadStoredCredentials(rawProfile.api_key, rawProfile.secret_key)
     };
   }
 
   /** Records an operator-verified pairing; any profile/credential change invalidates it. */
-  public async pairProducts(evidenceId: string): Promise<{ paired: true; source: "operator-verified" }> {
+  public async pairProducts(evidenceId: string, requestedName?: string): Promise<{ paired: true; source: "operator-verified" }> {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(evidenceId)) throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "Provide a non-secret pairing evidence ID.");
     const config = await this.read();
+    if (requestedName) {
+      const profile = this.profileFrom(config, requestedName);
+      if (!profile.products) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "Select a unified profile for profile-scoped pairing.");
+      const { pairing: _, ...binding } = profile;
+      profile.pairing = { version: createHash("sha256").update(JSON.stringify(binding)).digest("hex"), evidenceId };
+      await this.write(config);
+      return { paired: true, source: "operator-verified" };
+    }
     if (validateProduct(this.profileFrom(config, "spot").product) !== "spot" || validateProduct(this.profileFrom(config, "futures").product) !== "futures") throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "Pairing requires spot and futures product profiles.");
     config.account_pairing = { spotVersion: versionOf(config, "spot"), futuresVersion: versionOf(config, "futures"), evidenceId };
     await this.write(config);
@@ -235,14 +301,20 @@ export class ConfigStore {
     return this.resolveFrom(config, name);
   }
 
-  private resolveFrom(config: LocalConfig, name: string): ResolvedProfile {
+  private resolveFrom(config: LocalConfig, name: string, requestedProduct?: Product): ResolvedProfile {
     validateProfileName(name);
     const profile = this.profileFrom(config, name);
+    const product = requestedProduct ?? validateProduct(profile.product);
+    if (requestedProduct && !profile.products && product !== validateProduct(profile.product)) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "The selected profile does not support this product.");
+    const { pairing: _, ...binding } = profile;
+    const paired = profile.pairing?.version === createHash("sha256").update(JSON.stringify(binding)).digest("hex");
     return {
       name,
-      product: validateProduct(profile.product),
+      product,
+      ...(profile.products ? { products: [...profile.products], ...(profile.state_profile_names ? { stateProfileName: profile.state_profile_names[product] } : {}) } : {}),
+      ...(paired && profile.pairing ? { accountPairing: { source: "operator-verified" as const, evidenceId: profile.pairing.evidenceId } } : {}),
       ...(config.account_pairing && ["spot", "futures"].includes(name) && config.account_pairing.spotVersion === versionOf(config, "spot") && config.account_pairing.futuresVersion === versionOf(config, "futures") ? { accountPairing: { source: "operator-verified" as const, evidenceId: config.account_pairing.evidenceId } } : {}),
-      openApiBaseUrl: profile.openapi_base_url,
+      openApiBaseUrl: profile.products && product === "futures" ? profile.futures_base_url! : profile.openapi_base_url,
       configVersion: createHash("sha256").update(versionOf(config, name)).update(JSON.stringify(config.account_pairing ?? null)).digest("hex")
     };
   }
@@ -252,9 +324,17 @@ export class ConfigStore {
     const profile = config.profiles[name];
     if (!profile) throw new AiHubError("AI_HUB_PROFILE_NOT_FOUND", `Profile "${name}" does not exist.`);
     validateProduct(profile.product);
+    if (profile.products && config.version !== 2) throw new AiHubError("AI_HUB_CONFIG_INVALID", "Unified profiles require configuration version 2.");
+    if (profile.products && (!Array.isArray(profile.products) || profile.products.join(",") !== "spot,futures" || !profile.futures_base_url || profile.product !== "spot")) throw new AiHubError("AI_HUB_CONFIG_INVALID", "Unified profiles require spot,futures and both endpoints.");
+    if (profile.state_profile_names) {
+      if (!profile.products) throw new AiHubError("AI_HUB_CONFIG_INVALID", "Legacy state identities require a unified profile.");
+      for (const product of ["spot", "futures"] as const) validateProfileName(profile.state_profile_names[product]);
+    }
     try {
-      const url = new URL(profile.openapi_base_url);
-      if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.hostname === "localhost" || (isIP(url.hostname) && blockedIp(url.hostname))) throw new Error("unsafe URL");
+      for (const endpoint of [profile.openapi_base_url, ...(profile.products ? [profile.futures_base_url!] : [])]) {
+        const url = new URL(endpoint);
+        if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.hostname === "localhost" || (isIP(url.hostname) && blockedIp(url.hostname))) throw new Error("unsafe URL");
+      }
     } catch { throw new AiHubError("AI_HUB_INVALID_OPENAPI_URL", "Profile must contain a valid public HTTPS endpoint."); }
     return profile;
   }

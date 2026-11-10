@@ -22,9 +22,27 @@ Create a local profile and enter credentials interactively:
 
 ```bash
 ai-hub config init
-ai-hub config set --profile default --openapi-base-url https://your-openapi-domain
-ai-hub config set-credentials --profile default
+ai-hub config set --profile merchant --products spot,futures --openapi-base-url https://openapi.example.com
+ai-hub config set-credentials --profile merchant
 ```
+
+The profile serves both Spot and Futures. `https://openapi.example.com` derives `https://futuresopenapi.example.com`; replace the spot URL with your merchant's endpoint. Enter the shared credentials once. For nonstandard environments, add `--futures-base-url <https-url>` when setting the profile.
+
+Register one MCP server if you use an AI client:
+
+```bash
+ai-hub-trade-mcp setup --client codex --profile merchant
+```
+
+Replace `codex` with your supported client. This creates `aihub-merchant`, with both products; it does not create separate spot/futures servers. Add `--read-only` for queries only. The target client's CLI must be available on PATH for Codex, Claude Code and OpenClaw setup.
+
+Existing separate profiles remain supported. To merge them, stop their old MCP connections, run the following dry run, then repeat it with `--apply`:
+
+```bash
+ai-hub config unify-products --profile merchant --spot-source spot --futures-source futures
+```
+
+The source domains and credentials must match. Migration preserves unresolved operation identities. Old previews require preparation again, and transfer account pairing must be reverified. Verify the unified registration before removing the old product registrations.
 
 The API key and secret key are stored as plaintext in `~/.ai-hub/config.toml`. The configuration directory and file use mode `700` and `600` respectively. `ai-hub config show` never prints the key values. State-changing operations require a preview followed by a separate confirmation command.
 

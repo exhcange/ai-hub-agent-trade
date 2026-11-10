@@ -206,3 +206,13 @@ test("uses the official client CLIs for Claude Code, Codex, and OpenClaw", async
     }
   ]);
 });
+
+
+test("persists per-product read-only settings without registering two servers", async () => {
+  const home = await mkdtemp(join(tmpdir(), "unified-setup-"));
+  runMcpSetup({ ...setupOptions("cursor", "merchant"), spotReadOnly: true }, { home, platform: "darwin", cwd: home });
+  const config = JSON.parse(await readFile(join(home, ".cursor", "mcp.json"), "utf8"));
+  assert.deepEqual(Object.keys(config.mcpServers), ["aihub-merchant"]);
+  assert.ok(config.mcpServers["aihub-merchant"].args.includes("--spot-read-only"));
+  assert.equal(config.mcpServers["aihub-merchant"].args.includes("--futures-read-only"), false);
+});

@@ -6,6 +6,11 @@ description: Query Futures assets, positions, historical PnL and account transac
 
 # Ai Hub Futures Account
 
+## Unified merchant connections
+
+A single MCP server may support both Spot and Futures. Select the configured merchant by `system_get_capabilities`, including `products` and `productAccess`; never infer its product from the server name. Use product-specific tools on that same server. For CLI fallback, use the selected unified merchant profile for either product, replacing legacy `--profile spot` / `--profile futures` examples below. Never switch merchant profiles to recover from a failed request. Existing separate product profiles remain supported.
+
+
 Use `futures_assets`, `futures_positions`, `futures_profit_history`, and `futures_transactions`. CLI equivalents are `ai-hub futures <operation> --profile futures` with the schema-required arguments.
 
 Assets and positions are separate views of the same account endpoint. Preserve equity, margin, locked funds and unrealized PnL as distinct values. Do not compute available-to-close quantity or infer modes/leverage from an empty position list. Account snapshots may be stale and cannot alone establish the outcome of a margin change.

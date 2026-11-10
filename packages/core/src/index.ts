@@ -22,6 +22,7 @@ export {
   ConfigStore,
   configFilePath,
   normalizeOpenApiBaseUrl,
+  deriveFuturesBaseUrl,
   validateProfileName,
   validateProduct,
   type Product,

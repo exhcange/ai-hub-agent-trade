@@ -6,7 +6,12 @@ description: Route Futures account and trading requests to the installed AI Hub 
 
 # Ai Hub Futures
 
-Use the fixed `futures` profile for Futures requests and `spot` for spot requests. Check the installed server's product capabilities when selecting a server; do not infer product from its label or fall back to smoke/default.
+## Unified merchant connections
+
+A single MCP server may support both Spot and Futures. Select the configured merchant by `system_get_capabilities`, including `products` and `productAccess`; never infer its product from the server name. Use product-specific tools on that same server. For CLI fallback, use the selected unified merchant profile for either product, replacing legacy `--profile spot` / `--profile futures` examples below. Never switch merchant profiles to recover from a failed request. Existing separate product profiles remain supported.
+
+
+Use the selected unified merchant profile for both products, or the matching legacy `futures` / `spot` profiles when the installation uses separate servers. Check the installed server's product capabilities when selecting a server; do not infer product from its label or fall back to smoke/default.
 
 For an unspecified balance request, query spot and Futures separately and display both without adding equity, margin or unrealized PnL together. Preserve partial failures and never replace failure with zero. Do not assert that profiles belong to the same user without verified pairing.
 

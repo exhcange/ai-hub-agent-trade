@@ -7,6 +7,7 @@ import { withLocalLock } from "./futures/transport.js";
 
 export interface ExecutionContext {
   profile: string;
+  product?: "spot" | "futures";
   openApiBaseUrl: string;
   configVersion: string;
   credentialVersion: string;
@@ -59,7 +60,7 @@ function hash(input: PrepareActionInput): string {
 function supersedes(next: PrepareActionInput, previous: PrepareActionInput): boolean {
   const managed = (value: PrepareActionInput) => value.action.startsWith("futures_") ||
     (value.action === "wallet_universal_transfer" && [value.payload.fromAccountType, value.payload.toAccountType].includes("5"));
-  if (!managed(next) || !managed(previous) || next.context.profile !== previous.context.profile) return false;
+  if (!managed(next) || !managed(previous) || next.context.profile !== previous.context.profile || next.context.product !== previous.context.product) return false;
   const global = (value: PrepareActionInput) => ["futures_set_position_mode", "futures_cancel_all_orders"].includes(value.action) || typeof value.payload.contractName !== "string";
   return global(next) || global(previous) || next.payload.contractName === previous.payload.contractName;
 }
@@ -183,6 +184,16 @@ export class FileConfirmationStore implements ConfirmationStore {
       throw new AiHubError("AI_HUB_CONFIRMATION_STORE_ERROR", `Unable to save the local confirmation preview: ${error instanceof Error ? error.message : "unknown error"}`);
     }
     return preparedAction(pending);
+  }
+
+  /** Non-consuming routing metadata. Confirmation still validates the complete binding atomically. */
+  public async routing(confirmationId: string): Promise<{ profile: string; product?: "spot" | "futures"; action: string }> {
+    if (!CONFIRMATION_ID.test(confirmationId)) throw new AiHubError("AI_HUB_CONFIRMATION_NOT_FOUND", "Confirmation was not found.");
+    let value: string;
+    try { value = await readFile(this.filePath(confirmationId), "utf8"); }
+    catch { throw new AiHubError("AI_HUB_CONFIRMATION_NOT_FOUND", "Confirmation was not found or has already been consumed."); }
+    const pending = this.parse(value, confirmationId);
+    return { profile: pending.context.profile, product: pending.context.product, action: pending.action };
   }
 
   public async confirm(confirmationId: string, userConfirmation: string, context: ExecutionContext): Promise<ConfirmedAction> {

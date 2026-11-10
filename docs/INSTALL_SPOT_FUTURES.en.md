@@ -1,108 +1,83 @@
-# AI Hub Operation Manual — Spot and Futures
+# AI Hub Guide: Spot and Futures
 
-For first-time AI Hub users with npm installed. Local review copy; not synchronized to the live GitBook site.
+For new users with npm installed. Configure one merchant profile and register one MCP server for both products. This guide describes this branch; npm publication and online GitBook updates are separate steps.
 
 ## 01 Quick Start
 
-Use this page to install the CLI and MCP packages and create a local connection profile for your platform.
+Install the CLI and MCP packages, configure one merchant connection, and use Spot and Futures through one MCP server.
 
 ### Prerequisites
 
-* npm installed, with Node.js 20 or later.
-* A publicly reachable HTTPS OpenAPI endpoint for your tenant.
-* An API key and secret key with the permissions required for your workflow.
-* Cursor, Claude Desktop, Claude Code, or Codex if you plan to use MCP.
-* A Skills-compatible AI Agent client, or a client that can load a Skill folder manually, if you plan to use Skills.
+- npm and Node.js 20 or later.
+- Your merchant's public HTTPS spot OpenAPI endpoint, normally `https://openapi.example.com`.
+- One API key and secret key valid for both products, with the required permissions.
+- A supported MCP client: Cursor, Claude Desktop, Claude Code, Codex, or OpenClaw.
+- A Skills-compatible client, or support for loading Skill folders manually.
 
-{% hint style="warning" %}
-Create a dedicated API credential for AI Hub and follow least privilege: read-only permissions for query workflows, and only the specific trading or wallet permissions required for orders, cancellations, or transfers.
-{% endhint %}
-
-{% stepper %}
-{% step %}
-
-### Install the CLI and MCP packages
+### Install
 
 ```bash
 npm install -g @aihubspot/agent-trade-cli @aihubspot/agent-trade-mcp
-```
-
-Verify the installation:
-
-```bash
 ai-hub --help
 ai-hub-trade-mcp --help
 ```
 
-{% endstep %}
+### Configure one merchant connection
 
-{% step %}
-
-### Create spot and Futures profiles
-
-Create one profile for each product. Use spot for spot trading and futures for Futures. Replace both example URLs with the respective OpenAPI HTTPS endpoints supplied by your platform; do not use the website or App API address.
+Replace the example URL with your merchant's spot OpenAPI endpoint. Do not use the website or App API address.
 
 ```bash
 ai-hub config init
-ai-hub config set --profile spot --product spot --openapi-base-url https://your-spot-openapi-domain
-ai-hub config set-credentials --profile spot
-ai-hub config set --profile futures --product futures --openapi-base-url https://your-futures-openapi-domain
-ai-hub config set-credentials --profile futures
+ai-hub config set --profile merchant --products spot,futures --openapi-base-url https://openapi.example.com
+ai-hub config set-credentials --profile merchant
+ai-hub config show --profile merchant
 ```
 
-set-credentials prompts separately for the API key and secret key without echoing them. Configure each product's credentials locally; do not share them in chat.
+The Futures endpoint is derived as `https://futuresopenapi.example.com`. Both endpoints are validated, and both products share the credentials entered once. Credential input is hidden. Never share keys in chat.
 
-Review the product markers and test public connectivity:
+For a nonstandard environment, add `--futures-base-url https://your-futures-api.example.com` to the configuration command. Changing either endpoint clears the configured credentials; configure them again only after checking the addresses.
+
+### Verify both products
 
 ```bash
-ai-hub config show --profile spot
-ai-hub config show --profile futures
-ai-hub market ping --profile spot
-ai-hub futures ping --profile futures
-ai-hub futures time --profile futures
+ai-hub market ping --profile merchant
+ai-hub futures ping --profile merchant
+ai-hub futures time --profile merchant
+ai-hub market ticker --symbol BTCUSDT --profile merchant
+ai-hub futures contracts --profile merchant
+ai-hub futures account assets --profile merchant
+ai-hub futures account positions --profile merchant
 ```
 
-Public endpoints require no credentials. Account and order queries require the selected profile's credentials.
+Public reads require no credentials. Account and order reads need API read permissions. Use the exact Futures contract identifiers returned by `contracts`.
 
-{% endstep %}
+### Register one MCP server
 
-{% step %}
-
-### Run your first market queries
+Choose the client you use:
 
 ```bash
-## Show a market summary.
-ai-hub market ticker-summary --quote-asset USDT --limit 20 --profile spot
-
-## Retrieve the ticker for one exact symbol.
-ai-hub market ticker --symbol BTCUSDT --profile spot
-
-## Retrieve price precision, quantity precision, and order minimums.
-ai-hub market symbol-info --symbol BTCUSDT --profile spot
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
-{% endstep %}
-{% endstepper %}
+Replace `codex` with `cursor`, `claude-desktop`, `claude-code`, or `openclaw` as appropriate. Add `--read-only` for queries only. Reload the MCP connection; fully restart the client if an old process remains.
 
-### First Futures queries
+The server `aihub-merchant` provides both products. Call `system_get_capabilities` and check `products`, `productAccess`, and `serviceVersion`. Spot tools use the spot endpoint; Futures tools use the Futures endpoint. Both transfer directions use spot wallet tools.
 
-Start with the public contract list, then query your account using the Futures credentials configured above.
+### Install Skills
 
 ```bash
-ai-hub futures contracts --profile futures
-ai-hub futures account assets --profile futures
-ai-hub futures account positions --profile futures
+npx skills add exhcange/ai-hub-agent-trade
 ```
 
-`contracts` returns the exact contract identifiers and trading rules. `assets` returns account money with two-decimal display, while `positions` returns active positions with quantities in contracts. For a ticker, first choose a contract from the returned list; see the Futures examples in [Command Line](gitbook/03-command-line.md).
+Select your client and all twelve spot/Futures Skills. Installing npm packages alone does not register MCP or install Skills.
 
-Next, register both profiles with the same client using the MCP chapter, and install spot and Futures guidance using the Skills chapter. Installing npm packages alone does not complete those steps.
 
 ### Next steps
 
-* Use the terminal or scripts: [Command Line](gitbook/03-command-line.md)
-* Connect an AI client: [MCP](gitbook/02-mcp.md)
-* Install agent operating guidance: [Skills](gitbook/04-skills.md)
+- [MCP](gitbook/02-mcp.md)
+- [Command Line](gitbook/03-command-line.md)
+- [Skills](gitbook/04-skills.md)
+- [Security](gitbook/05-security.md)
 
 
 ## 02 MCP
@@ -117,8 +92,6 @@ MCP (Model Context Protocol) lets supported AI clients call AI Hub as structured
 
 ### Prerequisites
 
-{% stepper %}
-{% step %}
 
 ### Install the MCP package
 
@@ -126,22 +99,14 @@ MCP (Model Context Protocol) lets supported AI clients call AI Hub as structured
 npm install -g @aihubspot/agent-trade-mcp
 ```
 
-{% endstep %}
-
-{% step %}
-
 ### Create a profile and configure credentials
 
 Configure credentials as described in [Quick Start](gitbook/01-quick-start.md).
-{% endstep %}
-
-{% step %}
 
 ### Install a supported client
 
 Install Cursor, Claude Desktop, Claude Code, or Codex.
-{% endstep %}
-{% endstepper %}
+
 
 ### Connect and start
 
@@ -149,20 +114,16 @@ After the CLI profile is ready, run the setup command for the target client:
 
 ```bash
 ## Cursor
-ai-hub-trade-mcp setup --client cursor --profile spot
-ai-hub-trade-mcp setup --client cursor --profile futures
+ai-hub-trade-mcp setup --client cursor --profile merchant
 
 ## Claude Desktop
-ai-hub-trade-mcp setup --client claude-desktop --profile spot
-ai-hub-trade-mcp setup --client claude-desktop --profile futures
+ai-hub-trade-mcp setup --client claude-desktop --profile merchant
 
 ## Claude Code
-ai-hub-trade-mcp setup --client claude-code --profile spot
-ai-hub-trade-mcp setup --client claude-code --profile futures
+ai-hub-trade-mcp setup --client claude-code --profile merchant
 
 ## Codex
-ai-hub-trade-mcp setup --client codex --profile spot
-ai-hub-trade-mcp setup --client codex --profile futures
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
 `setup` registers the installed MCP package using its absolute Node runtime and entrypoint, so the client does not depend on a global PATH. Credentials are not written into the client configuration; the MCP server continues to read the selected profile from `~/.ai-hub/config.toml`.
@@ -178,7 +139,7 @@ For Cursor and Claude Desktop, setup merges the existing JSON MCP configuration 
 You normally do not need to start the server yourself. The client starts it from its registered configuration. To run the local `stdio` server directly:
 
 ```bash
-ai-hub-trade-mcp --profile spot
+ai-hub-trade-mcp --profile merchant
 ```
 
 The process waits for an MCP client over standard input and output, so seeing no interactive terminal output is expected. To show usage:
@@ -192,7 +153,7 @@ ai-hub-trade-mcp --help
 Create and register a separate profile for each platform connection:
 
 ```bash
-ai-hub config set --profile merchant-a --openapi-base-url https://merchant-a-openapi.example
+ai-hub config set --profile merchant-a --products spot,futures --openapi-base-url https://openapi.merchant-a.example
 ai-hub config set-credentials --profile merchant-a
 ai-hub-trade-mcp setup --client codex --profile merchant-a
 ```
@@ -277,15 +238,13 @@ The required flow is: **prepare preview → show preview → wait for a new user
 Keep the default for most users:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot
-ai-hub-trade-mcp setup --client codex --profile futures
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
 Existing configurations can continue to specify full:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot --toolset full
-ai-hub-trade-mcp setup --client codex --profile futures --toolset full
+ai-hub-trade-mcp setup --client codex --profile merchant --toolset full
 ```
 
 #### Response mode
@@ -298,8 +257,7 @@ ai-hub-trade-mcp setup --client codex --profile futures --toolset full
 Existing clients configured with compatibility mode can retain it:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot --response-mode compat
-ai-hub-trade-mcp setup --client codex --profile futures --response-mode compat
+ai-hub-trade-mcp setup --client codex --profile merchant --response-mode compat
 ```
 
 #### Read-only mode
@@ -307,23 +265,22 @@ ai-hub-trade-mcp setup --client codex --profile futures --response-mode compat
 To expose queries but no orders, cancellations, or transfers, start MCP in read-only mode:
 
 ```bash
-ai-hub-trade-mcp --profile spot --read-only
+ai-hub-trade-mcp --profile merchant --read-only
 ```
 
 This mode does not register write-preview tools or `confirm_action`.
 
 ### Spot and Futures together
 
-Choose the setup commands for the client you use and register both profiles. The client should show two MCP servers:
+Register one MCP server for the unified connection:
 
-| MCP server | Profile product | Use for |
+| MCP server | Profile | Products |
 | --- | --- | --- |
-| `aihub-spot` | `spot` | Existing spot capabilities and both directions of Spot/Futures transfer. |
-| `aihub-futures` | `futures` | Futures market data, account/position queries, orders and trading settings. |
+| `aihub-merchant` | `merchant` | Spot and Futures |
 
-The profile's product determines the exposed tools. Explicit spot requests use the spot server; explicit Futures requests use the Futures server. An unspecified balance request queries both and shows separate components without adding totals. A missing server or failed query must not be silently replaced by the other product.
+Explicit Spot requests use spot tools; explicit Futures requests use `futures_*` tools on the same server. The tool's product selects the endpoint. Transfers continue to use the spot API. An unspecified balance request queries both views separately without adding totals, preserving partial failures.
 
-Call `system_get_capabilities` on each server and check `profile`, `productScope.product`, `readOnly` and `serviceVersion`. The `default` and `full` toolset names are compatibility aliases, not profile names. After updating the npm package, reload the MCP connection; fully restart the client if it keeps an old process. Switching an existing conversation alone may keep old code loaded.
+Call `system_get_capabilities` and check `profile`, `products`, `productAccess`, and `serviceVersion`. `default` and `full` are toolset names, not the profile used by this guide. Reload the MCP connection after package updates, and fully restart the client if it keeps an old process.
 
 #### Futures read tools
 
@@ -385,11 +342,11 @@ For example, a request to preview a one-contract LIMIT open-long order can use `
 }
 ```
 
-This is an illustrative input, not a market recommendation. The server is already bound to the `futures` profile, so the input does not contain credentials or an endpoint. The Agent displays the returned preview and stops. After the user sends a new explicit confirmation, the Agent calls `confirm_action` on the **same server** using the returned confirmation ID and that user's confirmation text. Parameter changes require a new preview.
+This is an illustrative input, not a market recommendation. The server is already bound to the `merchant` profile, so the input does not contain credentials or an endpoint. The Agent displays the returned preview and stops. After the user sends a new explicit confirmation, the Agent calls `confirm_action` on the **same server** using the returned confirmation ID and that user's confirmation text. Parameter changes require a new preview.
 
 For all-cancel, the scope is all ordinary orders at execution time, including orders added after the preview. For conditional and TP/SL orders, the exchange manages triggering. These details must remain visible in the preview and must not be replaced by an Agent monitoring task.
 
-#### Transfers use the spot server
+#### Transfers use the spot API
 
 The Futures transfer Skill calls these existing spot tools for both account-type directions `1 → 5` and `5 → 1`:
 
@@ -399,15 +356,14 @@ The Futures transfer Skill calls these existing spot tools for both account-type
 | `wallet_get_universal_transfer_history` | Query transfer history for the selected direction. |
 | `wallet_prepare_universal_transfer` | Preview a transfer with source, destination, coin and amount. |
 
-A transfer preview is confirmed through `confirm_action` on `aihub-spot`. Registering a writable Futures server alone does not expose transfer writes; the spot server and spot API credential also need the relevant capability. First complete the account-pair verification in [Security](gitbook/05-security.md).
+A transfer preview is confirmed through `confirm_action` on `aihub-merchant`. The spot tools and API credential need transfer permission. First complete the account-pair verification in [Security](gitbook/05-security.md).
 
 #### Enable query-only access
 
-To persist read-only access for both products, add `--read-only` when registering each server. For example:
+To persist read-only access for both products, add `--read-only` when registering the server. For example:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot --read-only
-ai-hub-trade-mcp setup --client codex --profile futures --read-only
+ai-hub-trade-mcp setup --client codex --profile merchant --read-only
 ```
 
 Use the client name appropriate to your installation. Read-only mode omits prepare tools and `confirm_action`. Without this option, supported writes are available through the preview/confirmation flow, subject to the API credential's permissions. Installing a Skill does not add a missing MCP permission.
@@ -423,14 +379,14 @@ Pass `--profile <name>` explicitly in scripts and Agent instructions to prevent 
 
 | Goal                             | Example command                                                                               |
 | -------------------------------- | --------------------------------------------------------------------------------------------- |
-| Show symbol overview             | `ai-hub market symbols-overview --limit 20 --profile spot`                                 |
-| Browse USDT symbols by page      | `ai-hub market symbols-list --quote-asset USDT --offset 0 --limit 20 --profile spot`       |
-| Search symbols                   | `ai-hub market symbols-search --query BTC --limit 20 --profile spot`                       |
-| Get precision and order minimums | `ai-hub market symbol-info --symbol BTCUSDT --profile spot`                                |
-| Get one ticker                   | `ai-hub market ticker --symbol ETHUSDT --profile spot`                                     |
-| Get an order-book summary        | `ai-hub market depth-summary --symbol BTCUSDT --limit 20 --profile spot`                   |
-| Get a recent-trades summary      | `ai-hub market trades-summary --symbol BTCUSDT --limit 20 --profile spot`                  |
-| Get a candle summary             | `ai-hub market klines-summary --symbol ETHUSDT --interval 60min --limit 20 --profile spot` |
+| Show symbol overview             | `ai-hub market symbols-overview --limit 20 --profile merchant`                                 |
+| Browse USDT symbols by page      | `ai-hub market symbols-list --quote-asset USDT --offset 0 --limit 20 --profile merchant`       |
+| Search symbols                   | `ai-hub market symbols-search --query BTC --limit 20 --profile merchant`                       |
+| Get precision and order minimums | `ai-hub market symbol-info --symbol BTCUSDT --profile merchant`                                |
+| Get one ticker                   | `ai-hub market ticker --symbol ETHUSDT --profile merchant`                                     |
+| Get an order-book summary        | `ai-hub market depth-summary --symbol BTCUSDT --limit 20 --profile merchant`                   |
+| Get a recent-trades summary      | `ai-hub market trades-summary --symbol BTCUSDT --limit 20 --profile merchant`                  |
+| Get a candle summary             | `ai-hub market klines-summary --symbol ETHUSDT --interval 60min --limit 20 --profile merchant` |
 
 List commands return 20 entries by default and accept at most 50 per request. Use `offset` to page through symbols; do not attempt to retrieve every symbol or a large historical dataset in one request.
 
@@ -438,14 +394,14 @@ List commands return 20 entries by default and accept at most 50 per request. Us
 
 ```bash
 ## Get available, frozen, and total ETH balance.
-ai-hub account asset-balance --asset ETH --profile spot
+ai-hub account asset-balance --asset ETH --profile merchant
 
 ## Get one order.
-ai-hub spot order get --symbol ETHUSDT --order-id <order-id> --profile spot
+ai-hub spot order get --symbol ETHUSDT --order-id <order-id> --profile merchant
 
 ## Get open orders and fills.
-ai-hub spot order open --symbol ETHUSDT --limit 20 --profile spot
-ai-hub spot order fills --symbol ETHUSDT --limit 20 --profile spot
+ai-hub spot order open --symbol ETHUSDT --limit 20 --profile merchant
+ai-hub spot order fills --symbol ETHUSDT --limit 20 --profile merchant
 ```
 
 ### Spot orders
@@ -460,36 +416,34 @@ The CLI deliberately avoids an ambiguous generic `volume` parameter. Use an expl
 
 ```bash
 ## Spend 100 USDT to market-buy ETH.
-ai-hub spot order market-buy --symbol ETHUSDT --quote-amount 100 --profile spot
+ai-hub spot order market-buy --symbol ETHUSDT --quote-amount 100 --profile merchant
 
 ## Market-sell 0.5 ETH.
-ai-hub spot order market-sell --symbol ETHUSDT --base-quantity 0.5 --profile spot
+ai-hub spot order market-sell --symbol ETHUSDT --base-quantity 0.5 --profile merchant
 
 ## Buy 1 ETH at a limit price of 1,800 USDT.
-ai-hub spot order limit --symbol ETHUSDT --side BUY --base-quantity 1 --price 1800 --profile spot
+ai-hub spot order limit --symbol ETHUSDT --side BUY --base-quantity 1 --price 1800 --profile merchant
 
 ## Sell all executable ETH; the preview shows the sellable quantity and any precision remainder.
-ai-hub spot order sell-available --symbol ETHUSDT --profile spot
+ai-hub spot order sell-available --symbol ETHUSDT --profile merchant
 ```
 
-{% hint style="info" %}
 A market buy accepts the quote amount to spend and cannot guarantee an exact base-asset amount. To buy exactly 1 ETH, use a limit order or first define the amount of USDT you are willing to spend.
-{% endhint %}
 
 ### Cancel and batch operations
 
 ```bash
 ## Cancel one order.
-ai-hub spot order cancel --symbol ETHUSDT --order-id <order-id> --profile spot
+ai-hub spot order cancel --symbol ETHUSDT --order-id <order-id> --profile merchant
 
 ## Place a batch of orders. --orders is a JSON array; maximum 10 orders.
 ai-hub spot order batch-place --symbol ETHUSDT --orders '[
   {"side":"BUY","type":"LIMIT","baseQuantity":"0.1","price":"1600"},
   {"side":"SELL","type":"LIMIT","baseQuantity":"0.1","price":"2000"}
-]' --profile spot
+]' --profile merchant
 
 ## Cancel a batch. --order-ids is a JSON array; maximum 10 IDs.
-ai-hub spot order batch-cancel --symbol ETHUSDT --order-ids '["<order-id-1>","<order-id-2>"]' --profile spot
+ai-hub spot order batch-cancel --symbol ETHUSDT --order-ids '["<order-id-1>","<order-id-2>"]' --profile merchant
 ```
 
 Every write command creates a preview only. See [Security](gitbook/05-security.md) for confirmation.
@@ -498,14 +452,14 @@ Every write command creates a preview only. See [Security](gitbook/05-security.m
 
 ```bash
 ## Get transferable assets in the spot account (account type 1).
-ai-hub wallet transferable-assets --account-type 1 --profile spot
+ai-hub wallet transferable-assets --account-type 1 --profile merchant
 
 ## Get a USDT deposit address and deposit history.
-ai-hub wallet deposit-address --main-coin-symbol USDT --profile spot
-ai-hub wallet deposit-history --page 1 --page-size 20 --profile spot
+ai-hub wallet deposit-address --main-coin-symbol USDT --profile merchant
+ai-hub wallet deposit-history --page 1 --page-size 20 --profile merchant
 
 ## Get transfer history from Spot to Derivatives.
-ai-hub wallet transfer-history --from-account-type 1 --to-account-type 5 --page 1 --page-size 20 --profile spot
+ai-hub wallet transfer-history --from-account-type 1 --to-account-type 5 --page 1 --page-size 20 --profile merchant
 ```
 
 Universal-transfer account types:
@@ -518,9 +472,7 @@ Universal-transfer account types:
 | `4`  | C2C                                  |
 | `5`  | Derivatives                          |
 
-{% hint style="warning" %}
 `2` means Isolated Margin, not a derivatives account. Use `5` for derivatives.
-{% endhint %}
 
 ```bash
 ## Transfer 10 USDT from Spot to Derivatives. This generates a preview only.
@@ -529,23 +481,23 @@ ai-hub wallet transfer \
   --to-account-type 5 \
   --coin-symbol USDT \
   --amount 10 \
-  --profile spot
+  --profile merchant
 ```
 
 ### Futures market data
 
-Futures commands use `ai-hub futures` and `--profile futures`. Start with `contracts` and use the exact `symbol` returned by that list as `--contract-name`. `E-BTC-USDT` below is an example; availability, prices and order limits depend on your platform.
+Futures commands use `ai-hub futures` and `--profile merchant`. Start with `contracts` and use the exact `symbol` returned by that list as `--contract-name`. `E-BTC-USDT` below is an example; availability, prices and order limits depend on your platform.
 
 | Goal | Example command |
 | --- | --- |
-| Check connectivity | `ai-hub futures ping --profile futures` |
-| Read server time | `ai-hub futures time --profile futures` |
-| Browse contracts | `ai-hub futures contracts --limit 20 --profile futures` |
-| Get one contract's rules | `ai-hub futures contracts --contract-name E-BTC-USDT --profile futures` |
-| Read the order book | `ai-hub futures market depth --contract-name E-BTC-USDT --limit 20 --profile futures` |
-| Read one contract's 24-hour ticker | `ai-hub futures market ticker --contract-name E-BTC-USDT --profile futures` |
-| Read index price, mark price and funding data | `ai-hub futures market index --contract-name E-BTC-USDT --profile futures` |
-| Read candles | `ai-hub futures market klines --contract-name E-BTC-USDT --interval 1h --limit 20 --profile futures` |
+| Check connectivity | `ai-hub futures ping --profile merchant` |
+| Read server time | `ai-hub futures time --profile merchant` |
+| Browse contracts | `ai-hub futures contracts --limit 20 --profile merchant` |
+| Get one contract's rules | `ai-hub futures contracts --contract-name E-BTC-USDT --profile merchant` |
+| Read the order book | `ai-hub futures market depth --contract-name E-BTC-USDT --limit 20 --profile merchant` |
+| Read one contract's 24-hour ticker | `ai-hub futures market ticker --contract-name E-BTC-USDT --profile merchant` |
+| Read index price, mark price and funding data | `ai-hub futures market index --contract-name E-BTC-USDT --profile merchant` |
+| Read candles | `ai-hub futures market klines --contract-name E-BTC-USDT --interval 1h --limit 20 --profile merchant` |
 
 These are public reads and do not require API credentials. A valid Futures OpenAPI base URL is still required. Contract rules include the contract multiplier, margin asset, price precision, order bounds and leverage bounds; use the rules for the selected contract before preparing an order.
 
@@ -557,12 +509,12 @@ Assets and positions are separate views of the Futures account. These queries re
 
 ```bash
 ## Get asset balances, or select one margin asset.
-ai-hub futures account assets --profile futures
-ai-hub futures account assets --asset USDT --profile futures
+ai-hub futures account assets --profile merchant
+ai-hub futures account assets --asset USDT --profile merchant
 
 ## Get current positions, optionally filtered by contract and margin asset.
-ai-hub futures account positions --limit 20 --profile futures
-ai-hub futures account positions --contract-name E-BTC-USDT --asset USDT --limit 20 --profile futures
+ai-hub futures account positions --limit 20 --profile merchant
+ai-hub futures account positions --contract-name E-BTC-USDT --asset USDT --limit 20 --profile merchant
 ```
 
 | View | How to read the result |
@@ -577,13 +529,13 @@ An unspecified-product request such as “show my balances” queries `spot` and
 
 ```bash
 ## Get one bounded PnL page for a contract.
-ai-hub futures account profit-history --contract-name E-BTC-USDT --limit 20 --profile futures
+ai-hub futures account profit-history --contract-name E-BTC-USDT --limit 20 --profile merchant
 
 ## Query USDT transactions for September 1, 2026, 00:00 through
 ## September 2, 2026, 00:00 UTC. Times are Unix milliseconds.
 ai-hub futures account transactions --symbol USDT \
   --begin-time 1788220800000 --end-time 1788307200000 \
-  --page 1 --limit 20 --profile futures
+  --page 1 --limit 20 --profile merchant
 ```
 
 `profit-history` accepts optional `--contract-name`, `--from-id` and a paired `--start-time`/`--end-time`. It provides historical PnL and fee components where returned. `transactions` requires `--symbol` for the asset and both `--begin-time` and `--end-time`; it uses `--page`, with optional `--type`. Do not pass a contract name as the transaction asset.
@@ -594,13 +546,13 @@ Transactions include supported ordinary-account business such as apportionment, 
 
 | Goal | Example command |
 | --- | --- |
-| Get an ordinary order by exchange ID | `ai-hub futures order detail --contract-name E-BTC-USDT --order-id <order-id> --profile futures` |
-| Get an ordinary order by client ID | `ai-hub futures order detail --contract-name E-BTC-USDT --client-order-id <client-order-id> --profile futures` |
-| Read current ordinary orders for a contract | `ai-hub futures order open --contract-name E-BTC-USDT --limit 20 --profile futures` |
-| Read current ordinary orders across contracts | `ai-hub futures order open --limit 20 --profile futures` |
-| Read historical ordinary orders | `ai-hub futures order history --contract-name E-BTC-USDT --limit 20 --profile futures` |
-| Read your fills | `ai-hub futures order trades --contract-name E-BTC-USDT --limit 20 --profile futures` |
-| Read current conditional and TP/SL orders | `ai-hub futures order triggers --contract-name E-BTC-USDT --page 1 --limit 20 --profile futures` |
+| Get an ordinary order by exchange ID | `ai-hub futures order detail --contract-name E-BTC-USDT --order-id <order-id> --profile merchant` |
+| Get an ordinary order by client ID | `ai-hub futures order detail --contract-name E-BTC-USDT --client-order-id <client-order-id> --profile merchant` |
+| Read current ordinary orders for a contract | `ai-hub futures order open --contract-name E-BTC-USDT --limit 20 --profile merchant` |
+| Read current ordinary orders across contracts | `ai-hub futures order open --limit 20 --profile merchant` |
+| Read historical ordinary orders | `ai-hub futures order history --contract-name E-BTC-USDT --limit 20 --profile merchant` |
+| Read your fills | `ai-hub futures order trades --contract-name E-BTC-USDT --limit 20 --profile merchant` |
+| Read current conditional and TP/SL orders | `ai-hub futures order triggers --contract-name E-BTC-USDT --page 1 --limit 20 --profile merchant` |
 
 Order detail requires a contract and exactly one of `--order-id` or `--client-order-id`. Preserve IDs as strings. History and fills require a contract and optionally accept `--from-id`. Your fills are private account records, not a public market recent-trades feed.
 
@@ -640,24 +592,24 @@ Use `trade place` for a LIMIT or MARKET order. Every command in this and the fol
 ## Preview a LIMIT open-long order for 1 contract.
 ai-hub futures trade place --contract-name E-BTC-USDT \
   --intent open-long --type LIMIT --quantity 1 --unit contracts \
-  --margin-mode isolated --price 60000 --profile futures
+  --margin-mode isolated --price 60000 --profile merchant
 
 ## Preview a MARKET open-short order for 1 contract.
 ai-hub futures trade place --contract-name E-BTC-USDT \
   --intent open-short --type MARKET --quantity 1 --unit contracts \
-  --margin-mode isolated --profile futures
+  --margin-mode isolated --profile merchant
 
 ## Preview closing 1 contract of a long position at market.
 ## The position and chosen margin mode must match your account.
 ai-hub futures trade place --contract-name E-BTC-USDT \
   --intent close-long --type MARKET --quantity 1 --unit contracts \
-  --margin-mode isolated --profile futures
+  --margin-mode isolated --profile merchant
 ```
 
 After reviewing one returned preview, stop and wait for a new explicit user confirmation. Only then run the corresponding confirmation command:
 
 ```bash
-ai-hub confirm --profile futures \
+ai-hub confirm --profile merchant \
   --confirmation-id <confirmation-id> \
   --user-confirmation "Confirm this preview"
 ```
@@ -683,7 +635,7 @@ Use the ordinary order's contract, intent, quantity, unit, margin mode and type,
 ai-hub futures trade condition --contract-name E-BTC-USDT \
   --intent open-long --type LIMIT --quantity 1 --unit contracts \
   --margin-mode isolated --trigger-type 3UP \
-  --trigger-price 65000 --price 65100 --profile futures
+  --trigger-price 65000 --price 65100 --profile merchant
 ```
 
 The trigger direction does not choose long/short or open/close; `--intent` does. This command does not expose `--time-in-force` or `--client-order-id`. Exchange trigger rules and market conditions determine triggering and execution; a trigger is not a guaranteed fill.
@@ -706,7 +658,7 @@ ai-hub futures trade profit-loss --contract-name E-BTC-USDT --side SELL \
   --order-list '[
     {"triggerType":1,"type":2,"volume":"1","triggerPrice":"58000"},
     {"triggerType":2,"type":2,"volume":"1","triggerPrice":"68000"}
-  ]' --profile futures
+  ]' --profile merchant
 ```
 
 Review every entry before confirming. The trigger orders are submitted to the exchange together; this command does not promise OCO behavior or automatic cancellation of the sibling order. Query their returned IDs through the supported order queries.
@@ -722,18 +674,18 @@ Review every entry before confirming. The trigger orders are submitted to the ex
 ```bash
 ## Preview cancellation of one ordinary order.
 ai-hub futures order cancel --contract-name E-BTC-USDT \
-  --order-id <order-id> --profile futures
+  --order-id <order-id> --profile merchant
 
 ## Preview cancellation of all ordinary orders in the Futures account.
-ai-hub futures order cancel-all --scope all-ordinary-orders --profile futures
+ai-hub futures order cancel-all --scope all-ordinary-orders --profile merchant
 
 ## Preview cancellation of one trigger order.
 ai-hub futures order cancel-trigger --contract-name E-BTC-USDT \
-  --order-id <trigger-order-id> --profile futures
+  --order-id <trigger-order-id> --profile merchant
 
 ## Preview cancellation of explicitly selected trigger orders.
 ai-hub futures order cancel-trigger --contract-name E-BTC-USDT \
-  --order-ids '["<trigger-order-id-1>","<trigger-order-id-2>"]' --profile futures
+  --order-ids '["<trigger-order-id-1>","<trigger-order-id-2>"]' --profile merchant
 ```
 
 Cancel-all does not accept a contract filter. Its preview shows the current observed ordinary-order count, but execution is not restricted to those previewed orders: ordinary orders added before execution may also be canceled. It excludes trigger orders and does not close positions. Use it only for an explicit request to cancel all ordinary Futures orders, then follow the same separate confirmation flow.
@@ -754,41 +706,41 @@ All four settings create previews and require the same next-message confirmation
 ```bash
 ## Preview changing account-wide position mode to hedge mode.
 ai-hub futures trade position-mode --contract-name E-BTC-USDT \
-  --position-model 2 --profile futures
+  --position-model 2 --profile merchant
 
 ## Preview changing this contract to isolated margin mode.
 ai-hub futures trade margin-mode --contract-name E-BTC-USDT \
-  --margin-model 2 --profile futures
+  --margin-model 2 --profile merchant
 
 ## Preview adding 10 units of the position's margin asset.
 ai-hub futures trade position-margin --position-id <position-id> \
-  --amount 10 --profile futures
+  --amount 10 --profile merchant
 
 ## Preview setting this contract's leverage to 5.
 ai-hub futures trade leverage --contract-name E-BTC-USDT \
-  --now-level 5 --profile futures
+  --now-level 5 --profile merchant
 ```
 
 The Agent does not automatically cancel orders, close positions or change another setting to satisfy a prerequisite. If the current value cannot be verified, it must be described as unknown instead of inventing a current-to-target comparison. Exchange risk checks still apply at submission.
 
 ### Transfers between Spot and Futures
 
-Both directions use the existing spot wallet commands and `--profile spot`. Account type `1` is Spot and `5` is Futures. Complete the one-time account-pair verification described in [Security](gitbook/05-security.md) before preparing a transfer.
+Both directions use the existing spot wallet commands and `--profile merchant`. Account type `1` is Spot and `5` is Futures. Complete the one-time account-pair verification described in [Security](gitbook/05-security.md) before preparing a transfer.
 
 ```bash
 ## Read transferable assets on the Futures side through the spot API.
-ai-hub wallet transferable-assets --account-type 5 --profile spot
+ai-hub wallet transferable-assets --account-type 5 --profile merchant
 
 ## Preview transferring 10 USDT from Futures back to Spot.
 ai-hub wallet transfer --from-account-type 5 --to-account-type 1 \
-  --coin-symbol USDT --amount 10 --profile spot
+  --coin-symbol USDT --amount 10 --profile merchant
 
 ## Read transfer history for the same direction.
 ai-hub wallet transfer-history --from-account-type 5 --to-account-type 1 \
-  --page 1 --page-size 20 --profile spot
+  --page 1 --page-size 20 --profile merchant
 ```
 
-For Spot to Futures, use `--from-account-type 1 --to-account-type 5`, as in the wallet example above. The transfer's confirmation also uses `--profile spot`. Futures account equity is not a substitute for a transferable-balance query.
+For Spot to Futures, use `--from-account-type 1 --to-account-type 5`, as in the wallet example above. The transfer's confirmation also uses `--profile merchant`. Futures account equity is not a substitute for a transferable-balance query.
 
 ### Futures pagination, time ranges and request frequency
 
@@ -850,7 +802,7 @@ Use AI Hub to show the first 20 order-book levels for BTCUSDT.
 ```
 
 ```
-Use AI Hub to show my available ETH balance with profile spot.
+Use AI Hub to show my available ETH balance with profile merchant.
 ```
 
 ```
@@ -963,7 +915,7 @@ Preview transferring 10 USDT from Futures back to Spot.
 Show the first 20 transfer records from Futures to Spot.
 ```
 
-Both directions use `spot`, including the confirmation. The transfer Skill checks transferable funds and requires prior account-pair verification; two similarly named profiles alone do not prove that the accounts belong together.
+Both directions use the spot context of `merchant`, including the confirmation. The transfer Skill checks transferable funds and requires prior account-pair verification; connection names and domain conventions alone do not prove that the accounts belong together.
 
 #### Supported boundaries
 
@@ -990,42 +942,27 @@ The current version stores credentials locally in `~/.ai-hub/config.toml`. The c
 
 Orders, cancellations, transfers, withdrawals, and sub-account changes follow this flow:
 
-{% stepper %}
-{% step %}
 
 ### Create a preview
 
 The Agent or CLI validates the request and returns a **preview** only.
-{% endstep %}
-
-{% step %}
 
 ### Review the preview
 
 The preview includes the action summary, `confirmationId`, and expiry time.
-{% endstep %}
-
-{% step %}
 
 ### Send an explicit confirmation
 
 The Agent must stop and wait for a new, explicit user message sent **after** the preview.
-{% endstep %}
-
-{% step %}
 
 ### Confirm the action
 
 Only after receiving that message may it use `confirmationId` to confirm.
-{% endstep %}
-
-{% step %}
 
 ### Note confirmation limits
 
 A confirmation can be consumed once and expires after five minutes by default.
-{% endstep %}
-{% endstepper %}
+
 
 CLI example:
 
@@ -1034,13 +971,13 @@ CLI example:
 ai-hub spot order market-sell \
   --symbol ETHUSDT \
   --base-quantity 0.5 \
-  --profile spot
+  --profile merchant
 
 ## Step 2: run only after a new, explicit user confirmation.
 ai-hub confirm \
   --confirmation-id <confirmation-id> \
   --user-confirmation "yes" \
-  --profile spot
+  --profile merchant
 ```
 
 MCP uses the same boundary: call a `*_prepare_*` tool, display the preview, and stop. Only after a new user confirmation message may the Agent call `confirm_action`. An Agent must not generate, infer, or reuse confirmation text on its own.
@@ -1059,14 +996,14 @@ Review the actual returned preview before confirming:
 
 | Action | What to check |
 | --- | --- |
-| Every Futures action | The `futures` profile, exact action, scope, confirmation ID and expiry. |
+| Every Futures action | The `merchant` profile, Futures product, exact action, scope, confirmation ID and expiry. |
 | Ordinary order | Contract, open/close and long/short intent, LIMIT/MARKET, quantity and unit, cross/isolated mode, price when applicable, client order ID. |
 | Conditional order | All order parameters plus trigger direction, trigger price and execution price/type. The exchange manages triggering. |
 | Position TP/SL | Target contract and matching position, closing side and every trigger entry, including quantity in contracts. |
 | One ordinary/trigger cancellation | Correct order category, contract and exact ID or selected IDs. |
 | All ordinary cancellations | Account-wide scope at execution time, current observed order count and its coverage limits. Triggers and positions are excluded. |
 | Trading settings | Target mode/leverage or signed margin delta, affected account/contract/position, and current value only where verified. |
-| Spot/Futures transfer | The `spot` profile, source and destination account types, asset, amount and source transferable balance. |
+| Spot/Futures transfer | The `merchant` profile, Spot product, source and destination account types, asset, amount and source transferable balance. |
 
 For example, after “preview an isolated LIMIT open-long order for 1 contract of E-BTC-USDT at 60000,” the Agent returns a preview and stops. The user can then send “Confirm this preview.” The Agent confirms that one preview. If the user instead changes the price or quantity, the Agent creates a new preview and waits again.
 
@@ -1096,23 +1033,23 @@ Unresolved writes persist locally and block overlapping writes until resolved wi
 
 ```bash
 ## Futures operations.
-ai-hub futures operation-status --profile futures
+ai-hub futures operation-status --profile merchant
 
-## Spot/Futures transfers submitted through the spot profile.
-ai-hub futures operation-status --profile spot --transfer
+## Spot/Futures transfers submitted through the merchant spot context.
+ai-hub futures operation-status --profile merchant --transfer
 ```
 
 Normal query limits still apply during verification. Repeated polling does not make an unknown result safe to resend.
 
 ### Spot/Futures transfer verification
 
-Both directions use the `spot` profile and spot-side API: `1 → 5` for Spot to Futures and `5 → 1` for Futures to Spot. Before the first transfer, independently verify that the profiles represent the intended same-user, same-tenant account pair. Then record a non-secret evidence identifier:
+Both directions use the `merchant` profile and spot-side API: `1 → 5` for Spot to Futures and `5 → 1` for Futures to Spot. Before the first transfer, independently verify that Spot and Futures represent the intended same-user, same-tenant account pair. Then record a non-secret evidence identifier:
 
 ```bash
-ai-hub config pair-products --evidence-id <non-secret-evidence-id> --operator-verified
+ai-hub config pair-products --profile merchant --evidence-id <non-secret-evidence-id> --operator-verified
 ```
 
-This command records verification already performed by the operator; it does not prove account identity through an API. It also does not authorize a transfer. Each transfer still requires a source transferable-balance check, a complete preview and a new explicit confirmation on the spot profile.
+This command records verification already performed by the operator; it does not prove account identity through an API. It also does not authorize a transfer. Each transfer still requires a source transferable-balance check, a complete preview and a new explicit confirmation on the same merchant server.
 
 Configure spot transfer permissions if transfers are needed; query-only MCP access does not expose the transfer preview or confirmation. Avoid granting withdrawal or unrelated permissions merely to enable Spot/Futures transfers.
 
@@ -1150,7 +1087,7 @@ Say “spend 100 USDT to market-buy ETH,” or use a limit order with an exact E
 `2` is an Isolated Margin account. Use `5` for a Derivatives account:
 
 ```bash
-ai-hub wallet transfer --from-account-type 1 --to-account-type 5 --coin-symbol USDT --amount 10 --profile spot
+ai-hub wallet transfer --from-account-type 1 --to-account-type 5 --coin-symbol USDT --amount 10 --profile merchant
 ```
 
 </details>
@@ -1169,23 +1106,15 @@ This is expected. A write action must wait for a new user confirmation message a
 
 Check the following in order:
 
-{% stepper %}
-{% step %}
+
 Verify the installed version: `npm list -g --depth=0 | grep aihubspot`.
-{% endstep %}
 
-{% step %}
 Run the relevant `ai-hub-trade-mcp setup` command again.
-{% endstep %}
 
-{% step %}
 Restart Cursor or Claude Desktop, or open a new Claude Code/Codex session.
-{% endstep %}
 
-{% step %}
 Call `system_get_capabilities` and inspect `serviceVersion`, `toolset`, and `responseMode`.
-{% endstep %}
-{% endstepper %}
+
 
 </details>
 
@@ -1211,7 +1140,7 @@ After updating MCP, run `setup` again and restart or refresh the target AI clien
 
 <summary>Why are Futures tools missing, or only queries available?</summary>
 
-Check that the installed CLI/MCP package includes the Futures extension, that profile `futures` has `product=futures`, and that it is registered as a separate MCP server. Install all six Futures Skills alongside the spot Skills. Call `system_get_capabilities` on `aihub-futures` to verify product, version and `readOnly`.
+Check that CLI/MCP supports unified profiles, that `merchant` enables `--products spot,futures`, and that `aihub-merchant` is registered. Install all six Futures Skills alongside the spot Skills. Check `products`, `productAccess`, and `serviceVersion` with `system_get_capabilities`.
 
 Read-only registration intentionally omits prepare tools and `confirm_action`. To enable supported writes, register without `--read-only` and ensure the API credential has the required permissions. Reload the connection after changes; if an old process remains, fully restart the client. Switching conversations alone may not restart MCP.
 
@@ -1229,7 +1158,7 @@ Read-only registration intentionally omits prepare tools and `confirm_action`. T
 
 <summary>Can I use BTCUSDT directly as a Futures contract name?</summary>
 
-Use `ai-hub futures contracts --profile futures` and select the exact returned `symbol`. A Futures identifier may be something like `E-BTC-USDT`; the available names depend on your platform. Do not assume that the spot pair `BTCUSDT` has the same Futures identifier.
+Use `ai-hub futures contracts --profile merchant` and select the exact returned `symbol`. A Futures identifier may be something like `E-BTC-USDT`; the available names depend on your platform. Do not assume that the spot pair `BTCUSDT` has the same Futures identifier.
 
 </details>
 
@@ -1307,9 +1236,9 @@ Do not resend it automatically. Timeout can mean the exchange executed the reque
 
 <details>
 
-<summary>Why does a Futures-to-Spot transfer use the spot profile?</summary>
+<summary>Why does a Futures-to-Spot transfer use the spot API?</summary>
 
-Both directions use the existing spot-side transfer API, with account types `1` (Spot) and `5` (Futures). Transfer preview and confirmation therefore both use `spot`. First verify account pairing, then query source transferable funds. Futures write permission alone is insufficient if the spot MCP server is read-only or the spot API credential lacks transfer permission.
+Both directions use the existing spot-side transfer API, with account types `1` (Spot) and `5` (Futures). Transfer preview and confirmation therefore both use the spot tools on `merchant`. First verify account pairing, then query source transferable funds. Futures write permission alone is insufficient if the spot tools are read-only or the API credential lacks transfer permission.
 
 </details>
 
@@ -1327,7 +1256,7 @@ Their fields have different meanings. Futures equity, margin and unrealized PnL 
 ### Projects and packages
 
 * [AI Hub Agent Trade: CLI and MCP source](https://github.com/exhcange/ai-hub-agent-trade)
-* [AI Hub Agent Skills: Skills source](https://github.com/exhcange/ai-hub-agent-trade/tree/main/skills)
+* [AI Hub Agent Skills: Skills source](https://github.com/exhcange/ai-hub-agent-trade/tree/master/skills)
 * [CLI npm package: @aihubspot/agent-trade-cli](https://www.npmjs.com/package/@aihubspot/agent-trade-cli)
 * [MCP npm package: @aihubspot/agent-trade-mcp](https://www.npmjs.com/package/@aihubspot/agent-trade-mcp)
 
@@ -1342,10 +1271,7 @@ ai-hub-trade-mcp --help
 
 ### Documentation version note
 
-{% hint style="info" %}
 This guide describes commonly released capabilities. If documentation differs from the CLI or MCP behavior, defer to the latest GitHub source, the npm package version, and your local `--help` output.
-{% endhint %}
-
 
 ### Futures
 

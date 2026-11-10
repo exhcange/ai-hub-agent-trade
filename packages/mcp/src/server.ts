@@ -192,7 +192,7 @@ export function buildSystemCapabilities(
   toolset: McpToolset,
   responseMode: McpResponseMode,
   readOnly: boolean,
-  product: Product = "spot"
+  product: Product | "unified" = "spot"
 ): Record<string, unknown> {
   const exposed = readOnly ? tools.filter((tool) => tool.operation === "read") : tools;
   const read = exposed.filter((tool) => tool.operation === "read").length;
@@ -204,9 +204,9 @@ export function buildSystemCapabilities(
     serviceVersion: AI_HUB_RELEASE_VERSION,
     readOnly,
     productScope: {
-      spot: product === "spot",
-      spotMargin: { isolated: product === "spot", cross: product === "spot", explicitLeverageMultiplier: false },
-      derivatives: product === "futures",
+      spot: product !== "futures",
+      spotMargin: { isolated: product !== "futures", cross: product !== "futures", explicitLeverageMultiplier: false },
+      derivatives: product !== "spot",
       product
     },
     modules: [...new Set(exposed.map((tool) => tool.module))].sort(),
@@ -215,16 +215,18 @@ export function buildSystemCapabilities(
 }
 
 /** stdio adapter only: Tool schemas, validation, permissions, and handlers come from Core. */
-export function createServer(profileName: string | undefined, readOnly: boolean, toolset: McpToolset = DEFAULT_MCP_TOOLSET, responseMode: McpResponseMode = DEFAULT_MCP_RESPONSE_MODE, product: Product = "spot"): Server {
-  if (toolset === "transfer" && product !== "spot") throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "The transfer toolset requires a spot profile.");
+export function createServer(profileName: string | undefined, readOnly: boolean, toolset: McpToolset = DEFAULT_MCP_TOOLSET, responseMode: McpResponseMode = DEFAULT_MCP_RESPONSE_MODE, product: Product | "unified" = "spot", productReadOnly: readonly Product[] = []): Server {
+  if (toolset === "transfer" && product === "futures") throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "The transfer toolset requires a spot profile.");
   const allTools = createToolRegistry();
-  const registry = createToolRegistry(selectMcpToolset(allTools.list({ product }), toolset));
-  const writeExecutor = new ToolWriteExecutor(registry, new FileConfirmationStore());
+  const registry = createToolRegistry(selectMcpToolset(allTools.list(product === "unified" ? {} : { product }).filter((tool) => tool.operation === "read" || !productReadOnly.includes(tool.product ?? "spot")), toolset));
+  const writesEnabled = !readOnly && registry.list().some((tool) => tool.operation === "write");
+  const confirmations = new FileConfirmationStore();
+  const writeExecutor = new ToolWriteExecutor(registry, confirmations);
   const server = new Server(
     { name: "ai-hub-agent-trade", version: AI_HUB_RELEASE_VERSION },
     {
       capabilities: { tools: {} },
-      instructions: `Read results use the same discriminated JSON envelope in content.text and structuredContent. ${product === "futures" ? "Use futures_* tools only with the futures profile. The exchange manages trigger orders. Transfers use the spot profile. Never retry a write through CLI." : mcpRoutingInstructions()} Prepare tools only preview and require a new user confirmation before confirm_action.`
+      instructions: `Read results use the same discriminated JSON envelope in content.text and structuredContent. ${product === "unified" ? "This server supports Spot and Futures on one merchant profile. Tools route by product, never by a user-supplied endpoint. Transfers always use Spot. Query unspecified balances separately for both products. Never retry writes through CLI. " + mcpRoutingInstructions() : product === "futures" ? "Use futures_* tools only with the futures profile. The exchange manages trigger orders. Transfers use the spot profile. Never retry a write through CLI." : mcpRoutingInstructions()} Prepare tools only preview and require a new user confirmation before confirm_action.`
     }
   );
 
@@ -232,7 +234,7 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
     tools: [
       systemCapabilitiesTool(),
       ...registry.list({ readOnly }).flatMap((tool) => tool.operation === "write" ? [toPrepareMcpTool(tool)] : [toMcpTool(tool)]),
-      ...(readOnly ? [] : [{
+      ...(!writesEnabled ? [] : [{
         name: CONFIRM_ACTION_TOOL,
         title: "Confirm Prepared Action",
         description: "Execute one preview only after a NEW explicit user confirmation.",
@@ -247,12 +249,12 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
     const requestStartedAt = performance.now();
     const debugTiming = timingEnabled();
     const timing: RequestTiming = { contextLoadMs: 0, openApiMs: 0, handlerMs: 0, totalMs: 0 };
-    const loadContext = async () => {
+    const loadContext = async (targetProduct?: Product) => {
       const startedAt = performance.now();
       try {
         return await createToolExecutionContext(profileName, debugTiming ? {
           onRequestTiming: (elapsed) => { timing.openApiMs += elapsed; }
-        } : undefined, requestId);
+        } : undefined, requestId, targetProduct);
       } finally {
         timing.contextLoadMs += elapsedMs(startedAt);
       }
@@ -272,27 +274,34 @@ export function createServer(profileName: string | undefined, readOnly: boolean,
           throw new AiHubError("AI_HUB_INVALID_ARGUMENT", `${SYSTEM_CAPABILITIES_TOOL} does not accept arguments.`);
         }
         const context = await loadContext();
-        return toMcpReadResult(buildSystemCapabilities(context.profile.name, registry.list(), toolset, responseMode, readOnly, context.profile.product ?? "spot"), responseMode);
+        return toMcpReadResult({ ...buildSystemCapabilities(context.profile.name, registry.list(), toolset, responseMode, readOnly, product),
+          products: product === "unified" ? ["spot", "futures"] : [product],
+          productAccess: Object.fromEntries((product === "unified" ? ["spot", "futures"] : [product]).map((item) => [item, { readOnly: readOnly || productReadOnly.includes(item as Product) }]))
+        }, responseMode);
       }
       if (request.params.name === CONFIRM_ACTION_TOOL) {
-        if (readOnly) throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Tool "${CONFIRM_ACTION_TOOL}" is not available in this server session.`);
+        if (!writesEnabled) throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", `Tool "${CONFIRM_ACTION_TOOL}" is not available in this server session.`);
         const input = request.params.arguments ?? {};
         if (typeof input.confirmationId !== "string" || typeof input.userConfirmation !== "string" || !input.userConfirmation.trim()) {
           throw new AiHubError("AI_HUB_INVALID_ARGUMENT", "confirmationId and a non-empty userConfirmation are required.");
         }
         const confirmationId = input.confirmationId;
         const userConfirmation = input.userConfirmation;
-        const context = await loadContext();
+        const route = await confirmations.routing(confirmationId);
+        const action = registry.byName(route.action);
+        if (action.operation !== "write") throw new AiHubError("AI_HUB_TOOL_NOT_AVAILABLE", "The prepared action is not writable in this server.");
+        const context = await loadContext(action.product ?? "spot");
+        if (route.profile !== context.profile.name) throw new AiHubError("AI_HUB_CONFIRMATION_CONTEXT_CHANGED", "Confirmation belongs to another profile.");
         return result({ ok: true, data: await runHandler(() => writeExecutor.confirm(confirmationId, userConfirmation, context)) });
       }
       const preparedTool = readOnly ? undefined : registry.list().find((tool) => tool.operation === "write" && prepareToolName(tool) === request.params.name);
       if (preparedTool) {
-        const context = await loadContext();
+        const context = await loadContext(preparedTool.product ?? "spot");
         const input = normalizeMcpArguments(request.params.arguments ?? {}, preparedTool.inputSchema as Record<string, unknown>);
         return result({ ok: true, data: await runHandler(() => writeExecutor.prepare(preparedTool.name, input, context)) });
       }
       const tool = registry.byName(request.params.name, { readOnly });
-      const context = await loadContext();
+      const context = await loadContext(tool.product ?? "spot");
       const input = normalizeMcpArguments(request.params.arguments ?? {}, tool.inputSchema as Record<string, unknown>);
       const data = await runHandler(() => registry.execute(request.params.name, input, context, { readOnly }));
       return toMcpReadResult(data, responseMode);

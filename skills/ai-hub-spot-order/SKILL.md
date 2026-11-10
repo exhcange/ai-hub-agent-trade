@@ -6,11 +6,16 @@ description: Use this Skill when a user asks to retrieve or place supported AI H
 
 # AI Hub Spot Orders
 
+## Unified merchant connections
+
+A single MCP server may support both Spot and Futures. Select the configured merchant by `system_get_capabilities`, including `products` and `productAccess`; never infer its product from the server name. Use product-specific tools on that same server. For CLI fallback, use the selected unified merchant profile for either product, replacing legacy `--profile spot` / `--profile futures` examples below. Never switch merchant profiles to recover from a failed request. Existing separate product profiles remain supported.
+
+
 Use this Skill only for supported spot and spot-margin order operations. Do not infer an order size, symbol, side, price, order ID, or margin mode. For financial actions, preserve the exact values supplied by the user.
 
 ## Spot Margin Boundary
 
-- Margin commands mean isolated or cross **spot margin only**. Route explicit Futures or long/short-position requests to ai-hub-futures and the futures profile; never submit them through spot tools.
+- Margin commands mean isolated or cross **spot margin only**. Route explicit Futures or long/short-position requests to ai-hub-futures and the selected connection’s Futures tools; never submit them through spot tools.
 - An explicit leverage multiplier such as `10x` is not accepted by the OpenAPI order endpoint. Do not reinterpret it as an order amount, margin mode, or contract request.
 - For a request such as “open BTC at 10x”, explain that explicit leverage multiples are unsupported, state that only spot margin is available, and request the supported fields: isolated or cross mode, symbol, BUY or SELL, quantity or quote amount, and order type.
 - Every spot-margin write requires an explicit mode: `--isolated true` selects isolated margin and `--isolated false` selects cross margin. Never rely on an upstream default.

@@ -6,6 +6,11 @@ description: Use this Skill when a user asks about AI Hub wallet assets, deposit
 
 # AI Hub Deposits and Withdrawals
 
+## Unified merchant connections
+
+A single MCP server may support both Spot and Futures. Select the configured merchant by `system_get_capabilities`, including `products` and `productAccess`; never infer its product from the server name. Use product-specific tools on that same server. For CLI fallback, use the selected unified merchant profile for either product, replacing legacy `--profile spot` / `--profile futures` examples below. Never switch merchant profiles to recover from a failed request. Existing separate product profiles remain supported.
+
+
 Use this Skill for supported wallet operations. Treat asset balances, addresses, and transaction history as sensitive user data. Do not fabricate an address, network detail, account type, or transfer direction.
 
 Account types are fixed: `1` Spot, `2` Isolated Margin, `3` Cross Margin, `4` C2C, and `5` Derivatives. Account type `2` is never Derivatives. A wallet transfer involving type `2` requires the isolated-margin trading pair in `symbol`.

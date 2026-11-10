@@ -6,7 +6,12 @@ description: Transfer between spot and Futures using the existing spot-side capa
 
 # Ai Hub Futures Transfer
 
-Both directions use the fixed `spot` profile and existing `wallet_get_transferable_assets`, `wallet_get_universal_transfer_history`, and `wallet_prepare_universal_transfer` tools. CLI equivalents are `ai-hub wallet <operation> --profile spot`.
+## Unified merchant connections
+
+A single MCP server may support both Spot and Futures. Select the configured merchant by `system_get_capabilities`, including `products` and `productAccess`; never infer its product from the server name. Use product-specific tools on that same server. For CLI fallback, use the selected unified merchant profile for either product, replacing legacy `--profile spot` / `--profile futures` examples below. Never switch merchant profiles to recover from a failed request. Existing separate product profiles remain supported.
+
+
+Both directions use the spot-side context of the selected unified merchant profile, or the legacy `spot` profile and existing `wallet_get_transferable_assets`, `wallet_get_universal_transfer_history`, and `wallet_prepare_universal_transfer` tools. CLI equivalents are `ai-hub wallet <operation> --profile spot`.
 
 Account type 1 is spot and 5 is Futures. Restrict this workflow to 1 -> 5 or 5 -> 1. A transfer-only MCP session must not grant unrelated writes. Verify intended account pairing; a similarly named profile is not identity evidence. Never transfer credentials across profiles.
 

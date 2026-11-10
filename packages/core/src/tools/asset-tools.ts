@@ -109,8 +109,8 @@ async function resolveTenantIdentifiers(
 async function resolveUniversalTransfer(input: Record<string, unknown>, context: Parameters<ToolSpec["handler"]>[1]): Promise<Record<string, unknown>> {
   const futures = input.fromAccountType === "5" || input.toAccountType === "5";
   if (futures) {
-    if (context.profile.name !== "spot" || !context.profile.accountPairing) throw new AiHubError("AI_HUB_ACCOUNT_PAIRING_REQUIRED", "Verify and bind the spot/Futures profiles before transferring.");
-    await (context.futuresWrites ?? new FuturesWriteState()).assertClear(`${context.profile.name}|${context.profile.openApiBaseUrl}|transfer`);
+    if ((context.profile.name !== "spot" && !context.profile.products) || (context.profile.product ?? "spot") !== "spot" || !context.profile.accountPairing) throw new AiHubError("AI_HUB_ACCOUNT_PAIRING_REQUIRED", "Verify and bind the spot/Futures profiles before transferring.");
+    await (context.futuresWrites ?? new FuturesWriteState()).assertClear(`${(context.profile.stateProfileName ?? context.profile.name)}|${context.profile.openApiBaseUrl}|transfer`);
   }
   const resolved = await resolveTenantIdentifiers(input, context, "pair", "write");
   if (!futures) return { ...resolved, displayCoinSymbol: input.coinSymbol };
@@ -141,7 +141,7 @@ export const assetTools: ToolSpec<any>[] = [
     },
     handler: (input, context) => {
       const send = () => context.api.signedPost("/sapi/v1/asset/universal_transfer", universalTransferBody(input as Record<string, unknown>), signed(context), context.writeDeadlineMs);
-      return input.fromAccountType === "5" || input.toAccountType === "5" ? (context.futuresWrites ?? new FuturesWriteState()).execute(`${context.profile.name}|${context.profile.openApiBaseUrl}|transfer`, "wallet_universal_transfer", send) : send();
+      return input.fromAccountType === "5" || input.toAccountType === "5" ? (context.futuresWrites ?? new FuturesWriteState()).execute(`${(context.profile.stateProfileName ?? context.profile.name)}|${context.profile.openApiBaseUrl}|transfer`, "wallet_universal_transfer", send) : send();
     },
     writeSummary: (input) => {
       const value = input as Record<string, unknown>;

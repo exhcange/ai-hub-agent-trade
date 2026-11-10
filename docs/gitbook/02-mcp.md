@@ -10,27 +10,21 @@ MCP (Model Context Protocol) lets supported AI clients call AI Hub as structured
 
 ## Prerequisites
 
-{% stepper %}
-{% step %}
+
 ## Install the MCP package
 
 ```bash
 npm install -g @aihubspot/agent-trade-mcp
 ```
-{% endstep %}
 
-{% step %}
 ## Create a profile and configure credentials
 
-Configure credentials as described in [Quick Start](./).
-{% endstep %}
+Configure credentials as described in [Quick Start](01-quick-start.md).
 
-{% step %}
 ## Install a supported client
 
 Install Cursor, Claude Desktop, Claude Code, or Codex.
-{% endstep %}
-{% endstepper %}
+
 
 ## Connect and start
 
@@ -38,16 +32,16 @@ After the CLI profile is ready, run the setup command for the target client:
 
 ```bash
 # Cursor
-ai-hub-trade-mcp setup --client cursor --profile default
+ai-hub-trade-mcp setup --client cursor --profile merchant
 
 # Claude Desktop
-ai-hub-trade-mcp setup --client claude-desktop --profile default
+ai-hub-trade-mcp setup --client claude-desktop --profile merchant
 
 # Claude Code
-ai-hub-trade-mcp setup --client claude-code --profile default
+ai-hub-trade-mcp setup --client claude-code --profile merchant
 
 # Codex
-ai-hub-trade-mcp setup --client codex --profile default
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
 `setup` registers the installed MCP package using its absolute Node runtime and entrypoint, so the client does not depend on a global PATH. Credentials are not written into the client configuration; the MCP server continues to read the selected profile from `~/.ai-hub/config.toml`.
@@ -63,7 +57,7 @@ For Cursor and Claude Desktop, setup merges the existing JSON MCP configuration 
 You normally do not need to start the server yourself. The client starts it from its registered configuration. To run the local `stdio` server directly:
 
 ```bash
-ai-hub-trade-mcp --profile default
+ai-hub-trade-mcp --profile merchant
 ```
 
 The process waits for an MCP client over standard input and output, so seeing no interactive terminal output is expected. To show usage:
@@ -77,16 +71,16 @@ ai-hub-trade-mcp --help
 Create and register a separate profile for each platform connection:
 
 ```bash
-ai-hub config set --profile merchant-a --openapi-base-url https://merchant-a-openapi.example
+ai-hub config set --profile merchant-a --products spot,futures --openapi-base-url https://openapi.merchant-a.example
 ai-hub config set-credentials --profile merchant-a
 ai-hub-trade-mcp setup --client codex --profile merchant-a
 ```
 
-The registered MCP name includes the profile, for example `ai-hub-trade-mcp-merchant-a`, so tenant configurations are not confused.
+The registered MCP name includes the profile, for example `aihub-merchant-a`, so tenant configurations are not confused.
 
 ## Default tools
 
-MCP uses the `default` toolset unless you explicitly choose another one. It exposes the most common, bounded spot workflows, along with `system_get_capabilities` and `confirm_action`.
+MCP uses the default toolset and filters tools by the profile product. The following table describes spot capabilities; Futures capabilities appear at the end of this chapter. Write tools are exposed only when read-only mode is disabled.
 
 | Module      | Default capability                                                                       | Notes                                                                                                |
 | ----------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -156,32 +150,32 @@ The required flow is: **prepare preview → show preview → wait for a new user
 
 | Toolset             | Use case                                                               | Description                                                                             |
 | ------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `default` (default) | Everyday spot-agent workflows                                          | Registers focused market summaries, spot orders, wallet reads, and universal transfers. |
-| `full`              | Advanced debugging or an explicit need for every currently public tool | Registers all public Core tools, increasing tool-selection cost and response context.   |
+| `default` (default) | Everyday use | Exposes supported tools for the selected product; read-only mode hides writes. |
+| `full` | Existing configuration compatibility | Exposes the same tools as default. |
 
 Keep the default for most users:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile default
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
-Choose the full toolset only when required:
+Existing configurations can continue to specify full:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile default --toolset full
+ai-hub-trade-mcp setup --client codex --profile merchant --toolset full
 ```
 
 ### Response mode
 
 | Response mode       | Description                                                                                                                                |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `compact` (default) | Text includes only type, count, and a summary. The complete standard result remains in MCP structured content, reducing duplicate context. |
-| `compat`            | Both text and structured content include full JSON. Use only for clients that require legacy text JSON.                                    |
+| `compact` (default) | Text and structuredContent return the same parseable standard result. |
+| `compat` | Retained compatibility name; current read output is the same as compact. |
 
-If a client cannot correctly read structured results, use compatibility mode:
+Existing clients configured with compatibility mode can retain it:
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile default --response-mode compat
+ai-hub-trade-mcp setup --client codex --profile merchant --response-mode compat
 ```
 
 ### Read-only mode
@@ -189,7 +183,105 @@ ai-hub-trade-mcp setup --client codex --profile default --response-mode compat
 To expose queries but no orders, cancellations, or transfers, start MCP in read-only mode:
 
 ```bash
-ai-hub-trade-mcp --profile default --read-only
+ai-hub-trade-mcp --profile merchant --read-only
 ```
 
 This mode does not register write-preview tools or `confirm_action`.
+
+## Spot and Futures together
+
+Register one MCP server for the unified connection:
+
+| MCP server | Profile | Products |
+| --- | --- | --- |
+| `aihub-merchant` | `merchant` | Spot and Futures |
+
+Explicit Spot requests use spot tools; explicit Futures requests use `futures_*` tools on the same server. The tool's product selects the endpoint. Transfers continue to use the spot API. An unspecified balance request queries both views separately without adding totals, preserving partial failures.
+
+Call `system_get_capabilities` and check `profile`, `products`, `productAccess`, and `serviceVersion`. `default` and `full` are toolset names, not the profile used by this guide. Reload the MCP connection after package updates, and fully restart the client if it keeps an old process.
+
+### Futures read tools
+
+These tools can run without a write preview. Market tools need a configured endpoint; account and order tools also need Futures read credentials.
+
+| Area | Tool | Use and key inputs |
+| --- | --- | --- |
+| Public | `futures_ping` | Check OpenAPI connectivity. |
+| Public | `futures_time` | Read server time. |
+| Public | `futures_contracts` | Browse contracts and rules; optional `contractName`, `limit`, `cursor`. Use the returned exact contract symbol. |
+| Public | `futures_depth` | Read bids/asks for `contractName`, bounded by `limit`. |
+| Public | `futures_ticker` | Read the 24-hour ticker for one `contractName`. |
+| Public | `futures_index` | Read index price, mark price and funding data for `contractName`. |
+| Public | `futures_klines` | Read candles for `contractName` and `interval`; optional `limit`. One hour is `1h`. |
+| Account | `futures_assets` | Read account asset fields; optional margin `asset`. |
+| Account | `futures_positions` | Read active positions; optional `contractName`, `asset`, `limit`. |
+| Account | `futures_profit_history` | Read historical PnL/fees; optional contract, `fromId` and paired `startTime`/`endTime`. |
+| Account | `futures_transactions` | Read asset transactions; required `symbol`, `beginTime`, `endTime`; optional `page`, `limit`, `type`. |
+| Orders | `futures_order_detail` | Required `contractName` and exactly one of `orderId` or `clientOrderId`. |
+| Orders | `futures_open_orders` | Read current ordinary orders; optional `contractName`, `limit`, `cursor`. |
+| Orders | `futures_order_history` | Read historical ordinary orders for `contractName`; optional `fromId`, `limit`. |
+| Orders | `futures_my_trades` | Read your fills for `contractName`; optional `fromId`, `limit`. |
+| Orders | `futures_trigger_orders` | Read current conditional/TP/SL orders for `contractName`; optional `page`, `limit`. |
+
+MCP uses camelCase input names such as `contractName`; CLI flags use kebab-case such as `--contract-name`. Amounts, quantities and IDs use strings where required by the tool schema; page sizes, page numbers and numeric enums use numbers.
+
+Futures results use the same `dataType` envelope described above. A paged list is commonly an `object`: read `data.value.items` and its continuation metadata, rather than assuming that every list uses `dataType: "array"`. Follow the returned continuation with the same filters. See [Command Line](03-command-line.md) for the exact pagination and time-range rules.
+
+Asset money is displayed to two decimals. Order, fill and position quantities marked `quantityUnit: "contracts"` use contracts; only the listed `quantityFields` receive that unit. Preserve separate equity, margin and unrealized PnL fields instead of computing a new total.
+
+### Futures write tools
+
+The following ten tools prepare a preview. They do not submit the exchange write during preparation.
+
+| Tool | Action and preview focus |
+| --- | --- |
+| `futures_prepare_place_order` | Ordinary LIMIT/MARKET order: contract, open/close intent, quantity and unit, margin mode, price and client order ID. |
+| `futures_prepare_place_condition_order` | Exchange-managed conditional order: ordinary order parameters plus trigger direction and price. |
+| `futures_prepare_place_profit_loss_order` | Position TP/SL: contract, closing side and 1–5 trigger entries, each with quantity and execution type. |
+| `futures_prepare_cancel_order` | Cancel one ordinary order by contract and exchange order ID. |
+| `futures_prepare_cancel_all_orders` | Cancel all ordinary orders across the Futures account; requires `scope: "all-ordinary-orders"`. Excludes triggers and positions. |
+| `futures_prepare_cancel_trigger_order` | Cancel selected trigger orders: contract and exactly one of `orderId`, `orderIds`, or `clientId`. |
+| `futures_prepare_set_position_mode` | Account-wide one-way/hedge mode; the request still requires a contract. |
+| `futures_prepare_set_margin_mode` | Cross/isolated margin mode for one contract. |
+| `futures_prepare_adjust_position_margin` | Signed margin adjustment for one isolated position. |
+| `futures_prepare_set_leverage` | Target leverage for one contract. |
+
+For example, a request to preview a one-contract LIMIT open-long order can use `futures_prepare_place_order` with these arguments:
+
+```json
+{
+  "contractName": "E-BTC-USDT",
+  "intent": "open-long",
+  "type": "LIMIT",
+  "quantity": "1",
+  "unit": "contracts",
+  "marginMode": "isolated",
+  "price": "60000"
+}
+```
+
+This is an illustrative input, not a market recommendation. The server is already bound to the `merchant` profile, so the input does not contain credentials or an endpoint. The Agent displays the returned preview and stops. After the user sends a new explicit confirmation, the Agent calls `confirm_action` on the **same server** using the returned confirmation ID and that user's confirmation text. Parameter changes require a new preview.
+
+For all-cancel, the scope is all ordinary orders at execution time, including orders added after the preview. For conditional and TP/SL orders, the exchange manages triggering. These details must remain visible in the preview and must not be replaced by an Agent monitoring task.
+
+### Transfers use the spot API
+
+The Futures transfer Skill calls these existing spot tools for both account-type directions `1 → 5` and `5 → 1`:
+
+| Spot MCP tool | Purpose |
+| --- | --- |
+| `wallet_get_transferable_assets` | Query transferable funds for the source account type. |
+| `wallet_get_universal_transfer_history` | Query transfer history for the selected direction. |
+| `wallet_prepare_universal_transfer` | Preview a transfer with source, destination, coin and amount. |
+
+A transfer preview is confirmed through `confirm_action` on `aihub-merchant`. The spot tools and API credential need transfer permission. First complete the account-pair verification in [Security](05-security.md).
+
+### Enable query-only access
+
+To persist read-only access for both products, add `--read-only` when registering the server. For example:
+
+```bash
+ai-hub-trade-mcp setup --client codex --profile merchant --read-only
+```
+
+Use the client name appropriate to your installation. Read-only mode omits prepare tools and `confirm_action`. Without this option, supported writes are available through the preview/confirmation flow, subject to the API credential's permissions. Installing a Skill does not add a missing MCP permission.

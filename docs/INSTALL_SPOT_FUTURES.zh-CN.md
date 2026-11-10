@@ -1,108 +1,87 @@
 # AI Hub 使用手册：现货与合约
 
-面向已安装 npm、尚未安装 AI Hub 的新用户。本地审阅版，尚未同步到线上 GitBook。
+面向已安装 npm 的新用户，按一个 `merchant` Profile 和一个 MCP 服务配置现货与合约。本文件对应本分支代码；发布 npm 包及同步线上 GitBook 是独立步骤。
 
 ## 01 快速开始
 
-本页用于安装 CLI 和 MCP 组件，并为您的平台创建本地连接配置。
+本页面向已安装 npm、尚未安装 AI Hub 的新用户，安装完成后通过一个 MCP 服务使用现货和合约。
 
 ### 使用前准备
 
-* 已安装 npm，Node.js 版本为 20 或更高；
-* 可访问的租户 OpenAPI 公网 HTTPS 域名；
-* 具有所需权限的 API Key 与 Secret Key；
-* 使用 MCP 时，已安装 Cursor、Claude Desktop、Claude Code 或 Codex；
-* 使用 Skills 时，客户端支持 `npx skills`，或支持手动加载 Skill 文件夹。
-
-{% hint style="info" %}
-建议为 AI Hub 单独创建 API 凭证，并遵循最小权限原则：只读场景仅授予查询权限；下单、撤单和划转需要各自对应的交易或资金权限。
-{% endhint %}
-
-{% stepper %}
-{% step %}
+- 已安装 npm，Node.js 版本为 20 或更高；
+- 平台提供的现货 OpenAPI 公网 HTTPS 地址，例如 `https://openapi.example.com`；
+- 具有所需查询、交易或资金权限的 API Key 和 Secret Key；
+- 使用 MCP 时，已安装 Cursor、Claude Desktop、Claude Code、Codex 或 OpenClaw；
+- 使用 Skills 时，客户端支持 Skills 安装或手动加载 Skill 文件夹。
 
 ### 安装 CLI 与 MCP
 
 ```bash
 npm install -g @aihubspot/agent-trade-cli @aihubspot/agent-trade-mcp
-```
-
-确认安装成功：
-
-```bash
 ai-hub --help
 ai-hub-trade-mcp --help
 ```
 
-{% endstep %}
+CLI 和 MCP 仍是两个安装包；后续只需注册一个 MCP 服务。请使用已包含 `--products spot,futures` 功能的版本。
 
-{% step %}
+### 创建连接配置
 
-### 创建现货与合约配置
-
-为两个产品分别创建 Profile：现货使用 `spot`，合约使用 `futures`。将两个示例域名分别替换为平台提供的现货、合约 OpenAPI HTTPS 地址，不要填写网站首页或 App API 地址。
+将示例地址替换为平台提供的现货 OpenAPI 地址，不要填写网站首页或 App API 地址。以下页面统一使用 `merchant` 作为 Profile 名称。
 
 ```bash
 ai-hub config init
-ai-hub config set --profile spot --product spot --openapi-base-url https://your-spot-openapi-domain
-ai-hub config set-credentials --profile spot
-ai-hub config set --profile futures --product futures --openapi-base-url https://your-futures-openapi-domain
-ai-hub config set-credentials --profile futures
+ai-hub config set --profile merchant --products spot,futures --openapi-base-url https://openapi.example.com
+ai-hub config set-credentials --profile merchant
+ai-hub config show --profile merchant
 ```
 
-执行 `set-credentials` 后，终端会分别提示输入 API Key 和 Secret Key，输入内容不会回显。两个产品的凭证分别在本机配置，不要发送到聊天中。
+`set-credentials` 会在终端依次提示输入 API Key 和 Secret Key，输入不会回显，不要把密钥发送到聊天中。
 
-查看配置中的产品类型，并验证公共连通性：
+配置现货地址后，系统会自动得到 `https://futuresopenapi.example.com` 作为合约地址。若平台使用不同命名规则，配置时通过 `--futures-base-url <合约HTTPS地址>` 显式指定。
+
+### 验证连接
 
 ```bash
-ai-hub config show --profile spot
-ai-hub config show --profile futures
-ai-hub market ping --profile spot
-ai-hub futures ping --profile futures
-ai-hub futures time --profile futures
+ai-hub market ping --profile merchant
+ai-hub futures ping --profile merchant
+ai-hub futures time --profile merchant
 ```
 
-公共接口不需要凭证；资产、仓位和订单等签名查询需要对应 Profile 的凭证。
+公共接口不需要凭证；资产、仓位及订单等签名查询需要相应权限。
 
-{% endstep %}
-
-{% step %}
-
-### 首次查询市场
+### 首次查询市场和账户
 
 ```bash
-## 查看当前市场摘要
-ai-hub market ticker-summary --quote-asset USDT --limit 20 --profile spot
+# 现货行情、币对规则。
+ai-hub market ticker-summary --quote-asset USDT --limit 20 --profile merchant
+ai-hub market ticker --symbol BTCUSDT --profile merchant
+ai-hub market symbol-info --symbol BTCUSDT --profile merchant
 
-## 查询精确币对的 Ticker
-ai-hub market ticker --symbol BTCUSDT --profile spot
-
-## 查询价格精度、数量精度和最小下单限制
-ai-hub market symbol-info --symbol BTCUSDT --profile spot
+# 合约规则、资产和当前仓位。
+ai-hub futures contracts --profile merchant
+ai-hub futures account assets --profile merchant
+ai-hub futures account positions --profile merchant
 ```
 
-{% endstep %}
-{% endstepper %}
+`contracts` 返回准确合约标识和交易规则；合约资产金额保留两位小数，订单、成交和仓位的合约数量按“张”展示。后续行情和下单命令使用实际返回的合约标识。
 
-### 首次查询合约
+### 注册 MCP 与安装 Skills
 
-先查询公共合约列表，再使用前面配置的合约凭证查询账户。
+选择自己使用的客户端注册一次。例如 Codex：
 
 ```bash
-ai-hub futures contracts --profile futures
-ai-hub futures account assets --profile futures
-ai-hub futures account positions --profile futures
+ai-hub-trade-mcp setup --client codex --profile merchant
+npx skills add exhcange/ai-hub-agent-trade
 ```
 
-`contracts` 返回准确合约标识和交易规则；`assets` 返回资产金额，保留两位小数；`positions` 返回当前有效仓位，数量按张展示。查询行情时先从列表选择合约，更多合约示例见[命令行](gitbook/zh/03-ming-ling-xing.md)。
-
-安装完成后，继续按 MCP 章节将两个 Profile 注册到同一个客户端，再按 Skills 章节安装现货和合约操作规则。仅安装 npm 包不会自动完成这两个步骤。
+在 Skills 安装界面选择目标客户端和全部 12 个现货、合约 Skills。客户端应显示 `aihub-merchant`；调用 `system_get_capabilities`，确认 `products` 包含 `spot`、`futures`。具体客户端命令见[MCP](gitbook/zh/02-mcp.md)。
 
 ### 下一步
 
-* 在终端或脚本中使用：[命令行](gitbook/zh/03-ming-ling-xing.md)
-* 接入 AI 客户端：[MCP 接入与启动](gitbook/zh/02-mcp.md)
-* 安装 Agent 操作规则：[Skills](gitbook/zh/04-skills.md)
+- [MCP](gitbook/zh/02-mcp.md)
+- [命令行](gitbook/zh/03-ming-ling-xing.md)
+- [Skills](gitbook/zh/04-skills.md)
+- [安全](gitbook/zh/05-an-quan.md)
 
 
 ## 02 MCP
@@ -117,8 +96,6 @@ MCP（Model Context Protocol）让支持 MCP 的 AI 客户端以结构化工具�
 
 ### 前置条件
 
-{% stepper %}
-{% step %}
 
 #### 安装 MCP 包
 
@@ -126,66 +103,45 @@ MCP（Model Context Protocol）让支持 MCP 的 AI 客户端以结构化工具�
 npm install -g @aihubspot/agent-trade-mcp
 ```
 
-{% endstep %}
-
-{% step %}
-
 #### 创建 Profile 并配置凭证
 
 已按[快速开始](gitbook/zh/01-kuai-su-kai-shi.md)创建 Profile 并配置凭证。
-{% endstep %}
-
-{% step %}
 
 #### 安装客户端
 
 已安装 Cursor、Claude Desktop、Claude Code 或 Codex 中的任一客户端。
-{% endstep %}
-{% endstepper %}
+
 
 ### 接入与启动
 
 先完成 CLI Profile 初始化，然后执行与目标客户端对应的命令：
 
-{% tabs %}
-{% tab title="Cursor" %}
+#### Cursor
 
 ```bash
-ai-hub-trade-mcp setup --client cursor --profile spot
-ai-hub-trade-mcp setup --client cursor --profile futures
+ai-hub-trade-mcp setup --client cursor --profile merchant
 ```
 
-{% endtab %}
-
-{% tab title="Claude Desktop" %}
+#### Claude Desktop
 
 ```bash
-ai-hub-trade-mcp setup --client claude-desktop --profile spot
-ai-hub-trade-mcp setup --client claude-desktop --profile futures
+ai-hub-trade-mcp setup --client claude-desktop --profile merchant
 ```
 
-{% endtab %}
-
-{% tab title="Claude Code" %}
+#### Claude Code
 
 ```bash
-ai-hub-trade-mcp setup --client claude-code --profile spot
-ai-hub-trade-mcp setup --client claude-code --profile futures
+ai-hub-trade-mcp setup --client claude-code --profile merchant
 ```
 
-{% endtab %}
-
-{% tab title="Codex" %}
+#### Codex
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot
-ai-hub-trade-mcp setup --client codex --profile futures
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
-{% endtab %}
-{% endtabs %}
 
-`setup` 会将当前已安装的 MCP 包以绝对 Node 路径和入口路径注册到客户端，因此客户端不依赖全局 PATH。凭证不会写入客户端配置文件，MCP 服务会继续从 `~/.ai-hub/config.toml` 读取指定 Profile。
+`setup` 会将当前已安装的 MCP 包以绝对 Node 路径和入口路径注册到客户端，因此客户端不依赖全局 PATH。Codex、Claude Code 和 OpenClaw 的 setup 需要对应客户端 CLI 在终端 PATH 中可用；`spawnSync codex ENOENT` 表示找不到 `codex` 命令。凭证不会写入客户端配置文件，MCP 服务会继续从 `~/.ai-hub/config.toml` 读取指定 Profile。
 
 执行完成后：
 
@@ -198,12 +154,10 @@ ai-hub-trade-mcp setup --client codex --profile futures
 通常无需手动启动服务；客户端会按注册配置启动它。若要从终端直接运行本地 `stdio` MCP 服务：
 
 ```bash
-ai-hub-trade-mcp --profile spot
+ai-hub-trade-mcp --profile merchant
 ```
 
-{% hint style="info" %}
 该命令会等待 MCP 客户端通过标准输入输出连接，因此终端没有交互式输出是正常现象。
-{% endhint %}
 
 查看帮助请使用：
 
@@ -216,7 +170,7 @@ ai-hub-trade-mcp --help
 为每个接入平台创建并注册独立的连接配置：
 
 ```bash
-ai-hub config set --profile merchant-a --openapi-base-url https://merchant-a-openapi.example
+ai-hub config set --profile merchant-a --products spot,futures --openapi-base-url https://openapi.merchant-a.example
 ai-hub config set-credentials --profile merchant-a
 ai-hub-trade-mcp setup --client codex --profile merchant-a
 ```
@@ -287,9 +241,7 @@ MCP 对写操作只暴露 `prepare` 工具，例如：
 * `spot_prepare_batch_cancel_orders`
 * `wallet_prepare_universal_transfer`
 
-{% hint style="warning" %}
 写操作流程必须是：**准备预览 → 展示预览 → 等待一条新的用户确认消息 → `confirm_action`**。详见[安全](gitbook/zh/05-an-quan.md)。
-{% endhint %}
 
 ### 高级选项
 
@@ -303,15 +255,13 @@ MCP 对写操作只暴露 `prepare` 工具，例如：
 大多数用户保持默认值即可：
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot
-ai-hub-trade-mcp setup --client codex --profile futures
+ai-hub-trade-mcp setup --client codex --profile merchant
 ```
 
 已有配置也可以继续显式指定 full：
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot --toolset full
-ai-hub-trade-mcp setup --client codex --profile futures --toolset full
+ai-hub-trade-mcp setup --client codex --profile merchant --toolset full
 ```
 
 #### 响应模式
@@ -324,8 +274,7 @@ ai-hub-trade-mcp setup --client codex --profile futures --toolset full
 如已有客户端配置使用兼容模式，可继续保留：
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot --response-mode compat
-ai-hub-trade-mcp setup --client codex --profile futures --response-mode compat
+ai-hub-trade-mcp setup --client codex --profile merchant --response-mode compat
 ```
 
 #### 只读模式
@@ -333,25 +282,22 @@ ai-hub-trade-mcp setup --client codex --profile futures --response-mode compat
 只想让 Agent 查询数据、不希望暴露任何下单、撤单或划转能力时，直接启动只读 MCP：
 
 ```bash
-ai-hub-trade-mcp --profile spot --read-only
+ai-hub-trade-mcp --profile merchant --read-only
 ```
 
-{% hint style="info" %}
 此模式不会注册写操作的预览工具，也不会注册 `confirm_action`。
-{% endhint %}
 
 ### 同时使用现货与合约
 
-选择你使用的客户端，为它分别注册两个 Profile。完成后客户端应显示两个 MCP 服务：
+统一配置只需注册一个 MCP 服务：
 
-| MCP 服务 | Profile 产品标记 | 用途 |
+| MCP 服务 | Profile | 支持产品 |
 | --- | --- | --- |
-| `aihub-spot` | `spot` | 现有现货能力，以及现货与合约两个方向的划转。 |
-| `aihub-futures` | `futures` | 合约行情、资产仓位、订单与交易设置。 |
+| `aihub-merchant` | `merchant` | 现货和合约 |
 
-Profile 的产品标记决定服务暴露的工具。明确的现货请求走现货服务，明确的合约请求走合约服务；未指定产品的余额查询分别查询两侧、分项展示，不合并总额。某个服务缺失或查询失败时，不能悄悄用另一个产品代替。
+明确的现货请求调用现货工具，明确的合约请求调用 `futures_*` 工具。请求域名由工具的产品类型选择；划转继续使用现货 API。未指定产品的余额查询分别查询两侧并分项展示，不合并总额。一侧失败时保留另一侧结果，并说明查询不完整。
 
-分别调用两个服务的 `system_get_capabilities`，检查 `profile`、`productScope.product`、`readOnly` 和 `serviceVersion`。`default`、`full` 是兼容保留的工具集名称，不是 Profile 名。更新 npm 包后重新加载 MCP 连接；如果仍保留旧进程，应完全退出客户端后重新打开。仅切换已有会话不一定加载新代码。
+调用这个服务的 `system_get_capabilities`，核对 `profile`、`products`、`productAccess` 和 `serviceVersion`。`default`、`full` 是工具集名称，不是本手册使用的 Profile 名称。更新安装包后重新加载连接，若客户端保留旧进程则完全退出后重新打开。
 
 #### 合约查询工具
 
@@ -413,11 +359,11 @@ MCP 参数采用 `contractName` 这样的驼峰名称，CLI 参数采用 `--cont
 }
 ```
 
-以上仅为参数示例。服务已经绑定 `futures` Profile，输入中不包含凭证或端点。Agent 展示返回的预览后停止；用户新发一条明确确认消息后，才在**同一个服务**调用 `confirm_action`，传入返回的确认 ID 和这条用户确认文本。修改参数时须重新生成预览。
+以上仅为参数示例。服务已经绑定 `merchant` Profile，输入中不包含凭证或端点。Agent 展示返回的预览后停止；用户新发一条明确确认消息后，才在**同一个服务**调用 `confirm_action`，传入返回的确认 ID 和这条用户确认文本。修改参数时须重新生成预览。
 
 全部撤单覆盖执行时的全部普通委托，包括预览后新增的普通委托。条件单和止盈止损由交易所负责触发。这些语义应在预览中明确，不能替换成 Agent 监控任务。
 
-#### 划转使用现货服务
+#### 划转使用现货 API
 
 合约划转 Skill 在 `1 → 5` 和 `5 → 1` 两个方向都使用现货侧已有工具：
 
@@ -427,15 +373,14 @@ MCP 参数采用 `contractName` 这样的驼峰名称，CLI 参数采用 `--cont
 | `wallet_get_universal_transfer_history` | 查询指定方向的划转记录。 |
 | `wallet_prepare_universal_transfer` | 按来源、目标、币种和金额准备划转预览。 |
 
-划转通过 `aihub-spot` 的 `confirm_action` 确认。仅开放合约服务写权限不能执行划转，现货服务和现货 API 凭证也需具备对应能力。首次使用前应完成[安全](gitbook/zh/05-an-quan.md)中的账户配对验证。
+划转通过 `aihub-merchant` 的 `confirm_action` 确认。划转使用现货 API，对应的现货工具和 API 凭证需具备划转权限。首次使用前应完成[安全](gitbook/zh/05-an-quan.md)中的账户配对验证。
 
 #### 只开放查询
 
-需要将两个产品长期配置为只读时，在注册服务时添加 `--read-only`，例如：
+需要两个产品均为只读时，注册服务时添加 `--read-only`：
 
 ```bash
-ai-hub-trade-mcp setup --client codex --profile spot --read-only
-ai-hub-trade-mcp setup --client codex --profile futures --read-only
+ai-hub-trade-mcp setup --client codex --profile merchant --read-only
 ```
 
 客户端名称按实际安装情况替换。只读模式不暴露 prepare 工具和 `confirm_action`；不加该参数时，支持的写能力通过预览确认流程开放，实际执行仍受 API 凭证权限约束。安装 Skill 不会额外赋予 MCP 权限。
@@ -445,22 +390,20 @@ ai-hub-trade-mcp setup --client codex --profile futures --read-only
 
 CLI 命令入口为 `ai-hub`。使用 `ai-hub --help` 查看当前版本的完整可用命令和参数。
 
-{% hint style="info" %}
 建议在脚本和 Agent 指令中始终传入 `--profile <name>`，避免跨租户调用。
-{% endhint %}
 
 ### 市场数据
 
 | 目标            | 示例命令                                                                                          |
 | ------------- | --------------------------------------------------------------------------------------------- |
-| 查看币对总览        | `ai-hub market symbols-overview --limit 20 --profile spot`                                 |
-| 分页浏览 USDT 币对  | `ai-hub market symbols-list --quote-asset USDT --offset 0 --limit 20 --profile spot`       |
-| 搜索币对          | `ai-hub market symbols-search --query BTC --limit 20 --profile spot`                       |
-| 查询币对精度和最小下单限制 | `ai-hub market symbol-info --symbol BTCUSDT --profile spot`                                |
-| 查询指定币对 Ticker | `ai-hub market ticker --symbol ETHUSDT --profile spot`                                     |
-| 查看订单簿摘要       | `ai-hub market depth-summary --symbol BTCUSDT --limit 20 --profile spot`                   |
-| 查看最近成交摘要      | `ai-hub market trades-summary --symbol BTCUSDT --limit 20 --profile spot`                  |
-| 查看 K 线摘要      | `ai-hub market klines-summary --symbol ETHUSDT --interval 60min --limit 20 --profile spot` |
+| 查看币对总览        | `ai-hub market symbols-overview --limit 20 --profile merchant`                                 |
+| 分页浏览 USDT 币对  | `ai-hub market symbols-list --quote-asset USDT --offset 0 --limit 20 --profile merchant`       |
+| 搜索币对          | `ai-hub market symbols-search --query BTC --limit 20 --profile merchant`                       |
+| 查询币对精度和最小下单限制 | `ai-hub market symbol-info --symbol BTCUSDT --profile merchant`                                |
+| 查询指定币对 Ticker | `ai-hub market ticker --symbol ETHUSDT --profile merchant`                                     |
+| 查看订单簿摘要       | `ai-hub market depth-summary --symbol BTCUSDT --limit 20 --profile merchant`                   |
+| 查看最近成交摘要      | `ai-hub market trades-summary --symbol BTCUSDT --limit 20 --profile merchant`                  |
+| 查看 K 线摘要      | `ai-hub market klines-summary --symbol ETHUSDT --interval 60min --limit 20 --profile merchant` |
 
 列表型命令默认返回 20 条，单次最大 50 条。币对浏览请使用 `offset` 分页，不要尝试一次性获取完整币对或大体量历史数据。
 
@@ -468,14 +411,14 @@ CLI 命令入口为 `ai-hub`。使用 `ai-hub --help` 查看当前版本的完�
 
 ```bash
 ## 查询 ETH 的可用、冻结和总余额
-ai-hub account asset-balance --asset ETH --profile spot
+ai-hub account asset-balance --asset ETH --profile merchant
 
 ## 查询指定订单
-ai-hub spot order get --symbol ETHUSDT --order-id <order-id> --profile spot
+ai-hub spot order get --symbol ETHUSDT --order-id <order-id> --profile merchant
 
 ## 查询当前委托和成交记录
-ai-hub spot order open --symbol ETHUSDT --limit 20 --profile spot
-ai-hub spot order fills --symbol ETHUSDT --limit 20 --profile spot
+ai-hub spot order open --symbol ETHUSDT --limit 20 --profile merchant
+ai-hub spot order fills --symbol ETHUSDT --limit 20 --profile merchant
 ```
 
 ### 现货下单
@@ -490,36 +433,34 @@ CLI 不使用有歧义的通用 `volume` 参数；请根据订单类型使用明
 
 ```bash
 ## 花费 100 USDT 市价买入 ETH
-ai-hub spot order market-buy --symbol ETHUSDT --quote-amount 100 --profile spot
+ai-hub spot order market-buy --symbol ETHUSDT --quote-amount 100 --profile merchant
 
 ## 市价卖出 0.5 ETH
-ai-hub spot order market-sell --symbol ETHUSDT --base-quantity 0.5 --profile spot
+ai-hub spot order market-sell --symbol ETHUSDT --base-quantity 0.5 --profile merchant
 
 ## 以 1,800 USDT 的限价买入 1 ETH
-ai-hub spot order limit --symbol ETHUSDT --side BUY --base-quantity 1 --price 1800 --profile spot
+ai-hub spot order limit --symbol ETHUSDT --side BUY --base-quantity 1 --price 1800 --profile merchant
 
 ## 卖出当前可执行的全部 ETH；预览会显示可卖数量和精度截断后的剩余量
-ai-hub spot order sell-available --symbol ETHUSDT --profile spot
+ai-hub spot order sell-available --symbol ETHUSDT --profile merchant
 ```
 
-{% hint style="info" %}
 市价买入只能指定花费的计价币金额，无法保证成交后恰好获得某个基础币数量。若目标是“买入恰好 1 ETH”，请使用限价单，或先明确允许花费的 USDT 金额。
-{% endhint %}
 
 ### 撤单和批量操作
 
 ```bash
 ## 撤销单个订单
-ai-hub spot order cancel --symbol ETHUSDT --order-id <order-id> --profile spot
+ai-hub spot order cancel --symbol ETHUSDT --order-id <order-id> --profile merchant
 
 ## 批量下单：--orders 为 JSON 数组，单次最多 10 笔
 ai-hub spot order batch-place --symbol ETHUSDT --orders '[
   {"side":"BUY","type":"LIMIT","baseQuantity":"0.1","price":"1600"},
   {"side":"SELL","type":"LIMIT","baseQuantity":"0.1","price":"2000"}
-]' --profile spot
+]' --profile merchant
 
 ## 批量撤单：--order-ids 为 JSON 数组，单次最多 10 笔
-ai-hub spot order batch-cancel --symbol ETHUSDT --order-ids '["<order-id-1>","<order-id-2>"]' --profile spot
+ai-hub spot order batch-cancel --symbol ETHUSDT --order-ids '["<order-id-1>","<order-id-2>"]' --profile merchant
 ```
 
 所有写命令仅生成预览。确认执行方式见[安全](gitbook/zh/05-an-quan.md)。
@@ -528,14 +469,14 @@ ai-hub spot order batch-cancel --symbol ETHUSDT --order-ids '["<order-id-1>","<o
 
 ```bash
 ## 查询现货账户（类型 1）可划转资产
-ai-hub wallet transferable-assets --account-type 1 --profile spot
+ai-hub wallet transferable-assets --account-type 1 --profile merchant
 
 ## 查询 USDT 充值地址和充值历史
-ai-hub wallet deposit-address --main-coin-symbol USDT --profile spot
-ai-hub wallet deposit-history --page 1 --page-size 20 --profile spot
+ai-hub wallet deposit-address --main-coin-symbol USDT --profile merchant
+ai-hub wallet deposit-history --page 1 --page-size 20 --profile merchant
 
 ## 查询现货到衍生品账户的划转记录
-ai-hub wallet transfer-history --from-account-type 1 --to-account-type 5 --page 1 --page-size 20 --profile spot
+ai-hub wallet transfer-history --from-account-type 1 --to-account-type 5 --page 1 --page-size 20 --profile merchant
 ```
 
 万向划转账户类型：
@@ -548,9 +489,7 @@ ai-hub wallet transfer-history --from-account-type 1 --to-account-type 5 --page 
 | `4` | C2C 账户                                  |
 | `5` | 衍生品账户（Derivatives）                      |
 
-{% hint style="warning" %}
 `2` 是逐仓杠杆，不是合约/衍生品账户；合约/衍生品必须使用 `5`。
-{% endhint %}
 
 ```bash
 ## 从现货账户划转 10 USDT 到衍生品账户；只会生成预览
@@ -559,23 +498,23 @@ ai-hub wallet transfer \
   --to-account-type 5 \
   --coin-symbol USDT \
   --amount 10 \
-  --profile spot
+  --profile merchant
 ```
 
 ### 合约市场数据
 
-合约命令使用 `ai-hub futures` 和 `--profile futures`。先通过 `contracts` 查询合约列表，把返回的准确 `symbol` 作为 `--contract-name`。下文的 `E-BTC-USDT` 仅为示例，实际可交易合约、价格和下单限制以所在平台为准。
+合约命令使用 `ai-hub futures` 和 `--profile merchant`。先通过 `contracts` 查询合约列表，把返回的准确 `symbol` 作为 `--contract-name`。下文的 `E-BTC-USDT` 仅为示例，实际可交易合约、价格和下单限制以所在平台为准。
 
 | 目标 | 示例命令 |
 | --- | --- |
-| 检查连通性 | `ai-hub futures ping --profile futures` |
-| 查询服务器时间 | `ai-hub futures time --profile futures` |
-| 浏览合约列表 | `ai-hub futures contracts --limit 20 --profile futures` |
-| 查询指定合约规则 | `ai-hub futures contracts --contract-name E-BTC-USDT --profile futures` |
-| 查询盘口深度 | `ai-hub futures market depth --contract-name E-BTC-USDT --limit 20 --profile futures` |
-| 查询单合约 24 小时行情 | `ai-hub futures market ticker --contract-name E-BTC-USDT --profile futures` |
-| 查询指数价、标记价和资金费率数据 | `ai-hub futures market index --contract-name E-BTC-USDT --profile futures` |
-| 查询 K 线 | `ai-hub futures market klines --contract-name E-BTC-USDT --interval 1h --limit 20 --profile futures` |
+| 检查连通性 | `ai-hub futures ping --profile merchant` |
+| 查询服务器时间 | `ai-hub futures time --profile merchant` |
+| 浏览合约列表 | `ai-hub futures contracts --limit 20 --profile merchant` |
+| 查询指定合约规则 | `ai-hub futures contracts --contract-name E-BTC-USDT --profile merchant` |
+| 查询盘口深度 | `ai-hub futures market depth --contract-name E-BTC-USDT --limit 20 --profile merchant` |
+| 查询单合约 24 小时行情 | `ai-hub futures market ticker --contract-name E-BTC-USDT --profile merchant` |
+| 查询指数价、标记价和资金费率数据 | `ai-hub futures market index --contract-name E-BTC-USDT --profile merchant` |
+| 查询 K 线 | `ai-hub futures market klines --contract-name E-BTC-USDT --interval 1h --limit 20 --profile merchant` |
 
 这些属于公共查询，不需要 API 凭证，但仍需配置正确的合约 OpenAPI 基址。合约规则包括面值、保证金币种、价格精度、下单上下限和杠杆范围；准备订单前应读取目标合约的实际规则。
 
@@ -587,12 +526,12 @@ ai-hub wallet transfer \
 
 ```bash
 ## 查询资产，或仅查看指定保证金币种。
-ai-hub futures account assets --profile futures
-ai-hub futures account assets --asset USDT --profile futures
+ai-hub futures account assets --profile merchant
+ai-hub futures account assets --asset USDT --profile merchant
 
 ## 查询当前仓位，可按合约及保证金币种过滤。
-ai-hub futures account positions --limit 20 --profile futures
-ai-hub futures account positions --contract-name E-BTC-USDT --asset USDT --limit 20 --profile futures
+ai-hub futures account positions --limit 20 --profile merchant
+ai-hub futures account positions --contract-name E-BTC-USDT --asset USDT --limit 20 --profile merchant
 ```
 
 | 查询内容 | 结果如何理解 |
@@ -607,13 +546,13 @@ ai-hub futures account positions --contract-name E-BTC-USDT --asset USDT --limit
 
 ```bash
 ## 查询一个合约的一页历史盈亏。
-ai-hub futures account profit-history --contract-name E-BTC-USDT --limit 20 --profile futures
+ai-hub futures account profit-history --contract-name E-BTC-USDT --limit 20 --profile merchant
 
 ## 查询 UTC 2026 年 9 月 1 日 00:00 至 9 月 2 日 00:00 的 USDT 流水。
 ## 起止时间使用 Unix 毫秒时间戳。
 ai-hub futures account transactions --symbol USDT \
   --begin-time 1788220800000 --end-time 1788307200000 \
-  --page 1 --limit 20 --profile futures
+  --page 1 --limit 20 --profile merchant
 ```
 
 `profit-history` 可选 `--contract-name`、`--from-id`，以及配套使用的 `--start-time` / `--end-time`，展示返回的历史盈亏和费用组成。`transactions` 必须提供资产 `--symbol`、`--begin-time` 和 `--end-time`，使用 `--page` 分页，也可传入 `--type`。资金流水的 `symbol` 是币种，不是合约名称。
@@ -624,13 +563,13 @@ ai-hub futures account transactions --symbol USDT \
 
 | 目标 | 示例命令 |
 | --- | --- |
-| 按交易所订单 ID 查询普通订单详情 | `ai-hub futures order detail --contract-name E-BTC-USDT --order-id <order-id> --profile futures` |
-| 按客户端订单 ID 查询普通订单详情 | `ai-hub futures order detail --contract-name E-BTC-USDT --client-order-id <client-order-id> --profile futures` |
-| 查询指定合约当前普通委托 | `ai-hub futures order open --contract-name E-BTC-USDT --limit 20 --profile futures` |
-| 跨合约查询当前普通委托 | `ai-hub futures order open --limit 20 --profile futures` |
-| 查询历史普通委托 | `ai-hub futures order history --contract-name E-BTC-USDT --limit 20 --profile futures` |
-| 查询本人成交记录 | `ai-hub futures order trades --contract-name E-BTC-USDT --limit 20 --profile futures` |
-| 查询当前条件单和止盈止损单 | `ai-hub futures order triggers --contract-name E-BTC-USDT --page 1 --limit 20 --profile futures` |
+| 按交易所订单 ID 查询普通订单详情 | `ai-hub futures order detail --contract-name E-BTC-USDT --order-id <order-id> --profile merchant` |
+| 按客户端订单 ID 查询普通订单详情 | `ai-hub futures order detail --contract-name E-BTC-USDT --client-order-id <client-order-id> --profile merchant` |
+| 查询指定合约当前普通委托 | `ai-hub futures order open --contract-name E-BTC-USDT --limit 20 --profile merchant` |
+| 跨合约查询当前普通委托 | `ai-hub futures order open --limit 20 --profile merchant` |
+| 查询历史普通委托 | `ai-hub futures order history --contract-name E-BTC-USDT --limit 20 --profile merchant` |
+| 查询本人成交记录 | `ai-hub futures order trades --contract-name E-BTC-USDT --limit 20 --profile merchant` |
+| 查询当前条件单和止盈止损单 | `ai-hub futures order triggers --contract-name E-BTC-USDT --page 1 --limit 20 --profile merchant` |
 
 普通订单详情必须指定合约，并在 `--order-id` 和 `--client-order-id` 中选择一个，不能同时传入。ID 应始终按字符串保留。历史普通委托与成交查询必须指定合约，可选 `--from-id`。这里的成交记录是当前用户的私有成交，不是公共市场最近成交。
 
@@ -670,24 +609,24 @@ ai-hub futures account transactions --symbol USDT \
 ## 预览：逐仓限价开多 1 张。
 ai-hub futures trade place --contract-name E-BTC-USDT \
   --intent open-long --type LIMIT --quantity 1 --unit contracts \
-  --margin-mode isolated --price 60000 --profile futures
+  --margin-mode isolated --price 60000 --profile merchant
 
 ## 预览：逐仓市价开空 1 张。
 ai-hub futures trade place --contract-name E-BTC-USDT \
   --intent open-short --type MARKET --quantity 1 --unit contracts \
-  --margin-mode isolated --profile futures
+  --margin-mode isolated --profile merchant
 
 ## 预览：市价平多 1 张。
 ## 实际仓位及所选保证金模式必须与账户情况相符。
 ai-hub futures trade place --contract-name E-BTC-USDT \
   --intent close-long --type MARKET --quantity 1 --unit contracts \
-  --margin-mode isolated --profile futures
+  --margin-mode isolated --profile merchant
 ```
 
 展示并核对其中一份预览后，Agent 必须停止，等待用户新发一条明确确认消息。收到后才能执行与该预览对应的确认命令：
 
 ```bash
-ai-hub confirm --profile futures \
+ai-hub confirm --profile merchant \
   --confirmation-id <confirmation-id> \
   --user-confirmation "确认执行这份预览"
 ```
@@ -713,7 +652,7 @@ ai-hub confirm --profile futures \
 ai-hub futures trade condition --contract-name E-BTC-USDT \
   --intent open-long --type LIMIT --quantity 1 --unit contracts \
   --margin-mode isolated --trigger-type 3UP \
-  --trigger-price 65000 --price 65100 --profile futures
+  --trigger-price 65000 --price 65100 --profile merchant
 ```
 
 触发方向不决定多空或开平仓，交易意图由 `--intent` 指定。该命令不提供 `--time-in-force` 和 `--client-order-id`。实际触发、执行受交易所触发规则和市场情况影响，触发成功不等于保证成交。
@@ -736,7 +675,7 @@ ai-hub futures trade profit-loss --contract-name E-BTC-USDT --side SELL \
   --order-list '[
     {"triggerType":1,"type":2,"volume":"1","triggerPrice":"58000"},
     {"triggerType":2,"type":2,"volume":"1","triggerPrice":"68000"}
-  ]' --profile futures
+  ]' --profile merchant
 ```
 
 确认前逐条核对。该命令将这些触发订单一起提交给交易所，但不承诺 OCO 行为，也不保证一条触发后另一条自动撤销。应保留返回 ID，并通过支持的订单查询查看状态。
@@ -752,18 +691,18 @@ ai-hub futures trade profit-loss --contract-name E-BTC-USDT --side SELL \
 ```bash
 ## 预览撤销一笔普通单。
 ai-hub futures order cancel --contract-name E-BTC-USDT \
-  --order-id <order-id> --profile futures
+  --order-id <order-id> --profile merchant
 
 ## 预览撤销合约账户下的全部普通委托。
-ai-hub futures order cancel-all --scope all-ordinary-orders --profile futures
+ai-hub futures order cancel-all --scope all-ordinary-orders --profile merchant
 
 ## 预览撤销一笔条件单。
 ai-hub futures order cancel-trigger --contract-name E-BTC-USDT \
-  --order-id <trigger-order-id> --profile futures
+  --order-id <trigger-order-id> --profile merchant
 
 ## 预览撤销明确指定的多笔条件单。
 ai-hub futures order cancel-trigger --contract-name E-BTC-USDT \
-  --order-ids '["<trigger-order-id-1>","<trigger-order-id-2>"]' --profile futures
+  --order-ids '["<trigger-order-id-1>","<trigger-order-id-2>"]' --profile merchant
 ```
 
 全部撤单不接受合约过滤。预览会展示当前查询到的普通委托数量，但执行范围不锁定在预览订单上：预览后、执行前新增的普通委托也可能被撤销。该操作不撤条件单、不平仓。只有用户明确要求撤销合约账户全部普通委托时才使用，并继续遵循单独确认流程。
@@ -784,41 +723,41 @@ AI Hub 每次条件单撤销接受 1–50 个不重复 ID，交易所还可能�
 ```bash
 ## 预览：将合约账户持仓模式修改为双向。
 ai-hub futures trade position-mode --contract-name E-BTC-USDT \
-  --position-model 2 --profile futures
+  --position-model 2 --profile merchant
 
 ## 预览：将指定合约改为逐仓模式。
 ai-hub futures trade margin-mode --contract-name E-BTC-USDT \
-  --margin-model 2 --profile futures
+  --margin-model 2 --profile merchant
 
 ## 预览：给指定仓位增加 10 个单位的保证金币种金额。
 ai-hub futures trade position-margin --position-id <position-id> \
-  --amount 10 --profile futures
+  --amount 10 --profile merchant
 
 ## 预览：将指定合约杠杆设为 5 倍。
 ai-hub futures trade leverage --contract-name E-BTC-USDT \
-  --now-level 5 --profile futures
+  --now-level 5 --profile merchant
 ```
 
 Agent 不会为了满足前置条件自动撤单、平仓或修改其他设置。当前值无法核实时，应标明未知，不能编造“当前值 → 目标值”。实际提交仍受交易所风控规则约束。
 
 ### 现货与合约互转
 
-两个方向都使用现有钱包命令及 `--profile spot`，账户类型 `1` 代表现货，`5` 代表合约。首次准备划转前，请先完成[安全](gitbook/zh/05-an-quan.md)中的账户配对验证。
+两个方向都使用现有钱包命令及 `--profile merchant`，账户类型 `1` 代表现货，`5` 代表合约。首次准备划转前，请先完成[安全](gitbook/zh/05-an-quan.md)中的账户配对验证。
 
 ```bash
 ## 通过现货 API 查询合约账户可划转资产。
-ai-hub wallet transferable-assets --account-type 5 --profile spot
+ai-hub wallet transferable-assets --account-type 5 --profile merchant
 
 ## 预览：从合约转回现货 10 USDT。
 ai-hub wallet transfer --from-account-type 5 --to-account-type 1 \
-  --coin-symbol USDT --amount 10 --profile spot
+  --coin-symbol USDT --amount 10 --profile merchant
 
 ## 查询同一方向的划转记录。
 ai-hub wallet transfer-history --from-account-type 5 --to-account-type 1 \
-  --page 1 --page-size 20 --profile spot
+  --page 1 --page-size 20 --profile merchant
 ```
 
-从现货转入合约时，使用 `--from-account-type 1 --to-account-type 5`，与前文钱包示例一致。划转的确认命令同样使用 `--profile spot`。不能把合约权益当作可划转余额，划转前应查询专门的可划转资产。
+从现货转入合约时，使用 `--from-account-type 1 --to-account-type 5`，与前文钱包示例一致。划转的确认命令同样使用 `--profile merchant`。不能把合约权益当作可划转余额，划转前应查询专门的可划转资产。
 
 ### 合约分页、时间范围与调用频率
 
@@ -882,7 +821,7 @@ Skill 正文采用英文编写，命令和安全边界与当前 CLI 一致。对
 ```
 
 ```
-使用 AI Hub 查询我的 ETH 可用余额，profile 为 spot。
+使用 AI Hub 查询我的 ETH 可用余额，profile 为 merchant。
 ```
 
 ```
@@ -995,7 +934,7 @@ Agent 会核对合约或仓位并说明范围。持仓模式影响整个合约�
 查看从合约转到现货的前 20 条划转记录。
 ```
 
-两个方向包括确认步骤都使用 `spot`。划转 Skill 查询专门的可划转余额，并要求事先完成账户配对验证；仅凭两个 Profile 名称相似不能证明账户对应关系。
+两个方向包括确认步骤都使用 `merchant` Profile 中的现货工具。划转 Skill 查询专门的可划转余额，并要求事先完成账户配对验证；连接名称和域名规则本身不能证明账户对应关系。
 
 #### 能力边界
 
@@ -1022,42 +961,27 @@ Agent 会核对合约或仓位并说明范围。持仓模式影响整个合约�
 
 下单、撤单、划转、提现、子账户变更等改变状态的操作，均遵循以下流程：
 
-{% stepper %}
-{% step %}
 
 ### 生成预览
 
 Agent 或 CLI 调用写操作，只校验参数并返回**预览**。
-{% endstep %}
-
-{% step %}
 
 ### 查看预览
 
 预览包含操作摘要、`confirmationId` 和过期时间。
-{% endstep %}
-
-{% step %}
 
 ### 等待用户确认
 
 Agent 必须停止，等待用户在预览**之后**发送一条新的、明确的确认消息。
-{% endstep %}
-
-{% step %}
 
 ### 执行确认
 
 收到新消息后，才可使用 `confirmationId` 执行确认。
-{% endstep %}
-
-{% step %}
 
 ### 确认记录失效
 
 确认记录只可消费一次，默认 5 分钟后失效。
-{% endstep %}
-{% endstepper %}
+
 
 CLI 示例：
 
@@ -1066,13 +990,13 @@ CLI 示例：
 ai-hub spot order market-sell \
   --symbol ETHUSDT \
   --base-quantity 0.5 \
-  --profile spot
+  --profile merchant
 
 ## 第二步：仅在收到新的用户明确确认后执行
 ai-hub confirm \
   --confirmation-id <confirmation-id> \
   --user-confirmation "yes" \
-  --profile spot
+  --profile merchant
 ```
 
 MCP 中的规则相同：先调用对应 `*_prepare_*` 工具，展示预览并停止；只有收到新的用户确认消息后，才可调用 `confirm_action`。Agent 不得自行生成、猜测或重复使用确认文本。
@@ -1091,14 +1015,14 @@ MCP 中的规则相同：先调用对应 `*_prepare_*` 工具，展示预览并�
 
 | 操作 | 核对内容 |
 | --- | --- |
-| 所有合约操作 | `futures` Profile、准确操作、作用范围、确认 ID 和有效期。 |
+| 所有合约操作 | `merchant` Profile、合约产品、准确操作、作用范围、确认 ID 和有效期。 |
 | 普通下单 | 合约、开平仓及多空方向、限价/市价、数量和单位、全仓/逐仓、适用时的价格、客户端订单 ID。 |
 | 条件单 | 全部下单参数，以及触发方向、触发价、执行价格/类型；确认由交易所负责触发。 |
 | 仓位止盈止损 | 目标合约及匹配仓位、平仓方向、每一条触发明细和对应张数。 |
 | 单笔普通单/条件单撤销 | 正确的订单类别、合约和准确 ID 或指定 ID 列表。 |
 | 全部普通委托撤销 | 执行时的全账户范围、当前观察到的委托数量及覆盖限制；不包含条件单和仓位。 |
 | 交易设置 | 目标模式/杠杆或保证金增减金额、影响的账户/合约/仓位；当前值仅在已核实时展示。 |
-| 现货/合约划转 | `spot` Profile、来源和目标账户类型、币种、金额及来源可划转余额。 |
+| 现货/合约划转 | `merchant` Profile、现货产品、来源和目标账户类型、币种、金额及来源可划转余额。 |
 
 例如，用户要求“预览 E-BTC-USDT 逐仓限价开多 1 张，价格 60000”后，Agent 展示预览并停止。用户随后发送“确认执行这份预览”，Agent 才确认这一笔。如果用户改成另一个价格或数量，应重新预览并再次等待确认。
 
@@ -1128,23 +1052,23 @@ Agent 不得为了满足这些条件自动撤单、平仓或修改设置。无�
 
 ```bash
 ## 合约操作状态。
-ai-hub futures operation-status --profile futures
+ai-hub futures operation-status --profile merchant
 
-## 通过现货 Profile 提交的现货/合约划转状态。
-ai-hub futures operation-status --profile spot --transfer
+## 通过 merchant 现货上下文提交的现货/合约划转状态。
+ai-hub futures operation-status --profile merchant --transfer
 ```
 
 查证期间仍需遵守查询频率限制。重复轮询不能让结果未知的请求变得可以安全重发。
 
 ### 现货与合约划转验证
 
-两个方向都使用 `spot` Profile 的现货 API：`1 → 5` 为现货转合约，`5 → 1` 为合约转现货。首次划转前，操作者应独立确认两个 Profile 属于预期的同用户、同租户账户，再登记非敏感证明编号：
+两个方向都使用 `merchant` Profile 中的现货 API：`1 → 5` 为现货转合约，`5 → 1` 为合约转现货。首次划转前，操作者应独立确认现货、合约属于预期的同用户、同租户账户，再登记非敏感证明编号：
 
 ```bash
-ai-hub config pair-products --evidence-id <non-secret-evidence-id> --operator-verified
+ai-hub config pair-products --profile merchant --evidence-id <non-secret-evidence-id> --operator-verified
 ```
 
-此命令记录操作者已经完成的验证，不会通过 API 自动证明账户身份，也不是划转授权。每次划转仍需查询来源可划转余额、展示完整预览，并在现货 Profile 收到新的明确确认。
+此命令记录操作者已经完成的验证，不会通过 API 自动证明账户身份，也不是划转授权。每次划转仍需查询来源可划转余额、展示完整预览，并在同一个 `merchant` 服务收到新的明确确认。
 
 需要划转时配置现货侧对应权限，只读 MCP 不暴露划转预览或确认工具。不要为了现货/合约划转额外授予提现等无关权限。
 
@@ -1182,7 +1106,7 @@ ai-hub-trade-mcp --help
 `2` 是逐仓杠杆账户，合约/衍生品账户使用 `5`。例如：
 
 ```bash
-ai-hub wallet transfer --from-account-type 1 --to-account-type 5 --coin-symbol USDT --amount 10 --profile spot
+ai-hub wallet transfer --from-account-type 1 --to-account-type 5 --coin-symbol USDT --amount 10 --profile merchant
 ```
 
 </details>
@@ -1230,7 +1154,7 @@ npx skills add exhcange/ai-hub-agent-trade
 
 <summary>为什么没有合约工具，或只能查询不能下单？</summary>
 
-检查已安装的 CLI/MCP 包是否包含合约能力，`futures` Profile 是否标记为 `product=futures`，以及是否已独立注册合约 MCP 服务。同时安装六个合约 Skill。在 `aihub-futures` 调用 `system_get_capabilities` 核对产品、版本和 `readOnly`。
+检查 CLI/MCP 是否包含统一连接能力，`merchant` Profile 是否配置 `--products spot,futures`，以及是否注册了 `aihub-merchant`。同时安装六个合约 Skill。调用 `system_get_capabilities` 核对 `products`、`productAccess` 和 `serviceVersion`。
 
 只读注册会主动隐藏 prepare 工具和 `confirm_action`。需要支持的写能力时，注册命令不加 `--read-only`，并确保 API 凭证有对应权限。变更后重新加载连接；若仍保留旧进程，完全退出客户端再打开。仅切换会话不一定重启 MCP。
 
@@ -1248,7 +1172,7 @@ npx skills add exhcange/ai-hub-agent-trade
 
 <summary>可以直接用 BTCUSDT 作为合约名称吗？</summary>
 
-先运行 `ai-hub futures contracts --profile futures`，使用返回的准确 `symbol`。合约名称可能类似 `E-BTC-USDT`，实际名称由平台决定，不能默认现货币对 `BTCUSDT` 与合约标识一致。
+先运行 `ai-hub futures contracts --profile merchant`，使用返回的准确 `symbol`。合约名称可能类似 `E-BTC-USDT`，实际名称由平台决定，不能默认现货币对 `BTCUSDT` 与合约标识一致。
 
 </details>
 
@@ -1326,9 +1250,9 @@ npx skills add exhcange/ai-hub-agent-trade
 
 <details>
 
-<summary>为什么合约转现货也使用 spot Profile？</summary>
+<summary>为什么合约转现货也使用现货 API？</summary>
 
-两个方向都复用现货侧划转 API，账户类型为 `1`（现货）和 `5`（合约），所以预览和确认均使用 `spot`。首次先验证账户配对，随后查询来源可划转余额。若现货 MCP 为只读或现货 API 凭证没有划转权限，仅有合约写权限仍不能划转。
+两个方向都复用现货侧划转 API，账户类型为 `1`（现货）和 `5`（合约），所以预览和确认均使用 `merchant` 中的现货工具。首次先验证账户配对，随后查询来源可划转余额。若现货工具设为只读或 API 凭证没有划转权限，仅有合约写权限仍不能划转。
 
 </details>
 
@@ -1346,7 +1270,7 @@ npx skills add exhcange/ai-hub-agent-trade
 ### 项目与安装包
 
 * [AI Hub Agent Trade：CLI + MCP 源码](https://github.com/exhcange/ai-hub-agent-trade)
-* [AI Hub Agent Skills：Skills 源码](https://github.com/exhcange/ai-hub-agent-trade/tree/main/skills)
+* [AI Hub Agent Skills：Skills 源码](https://github.com/exhcange/ai-hub-agent-trade/tree/master/skills)
 * [CLI npm 包：@aihubspot/agent-trade-cli](https://www.npmjs.com/package/@aihubspot/agent-trade-cli)
 * [MCP npm 包：@aihubspot/agent-trade-mcp](https://www.npmjs.com/package/@aihubspot/agent-trade-mcp)
 
@@ -1361,10 +1285,7 @@ ai-hub-trade-mcp --help
 
 ### 文档版本说明
 
-{% hint style="info" %}
 本操作手册用于说明当前已发布的常用能力。若文档与 CLI/MCP 实际行为不一致，应以 GitHub 最新代码、npm 发布版本和本机 `--help` 输出为准。
-{% endhint %}
-
 
 ### 合约
 

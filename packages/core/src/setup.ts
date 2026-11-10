@@ -14,6 +14,8 @@ export interface McpSetupOptions {
   toolset?: McpToolset;
   responseMode?: McpResponseMode;
   readOnly?: boolean;
+  spotReadOnly?: boolean;
+  futuresReadOnly?: boolean;
   launch: McpServerLaunch;
 }
 
@@ -114,7 +116,7 @@ export function getMcpClientConfigPath(client: Exclude<McpClientId, "claude-code
   return getMcpClientConfigPaths(client, value)[0]!;
 }
 
-function buildServerSpec(profile: string | undefined, toolset: McpToolset, responseMode: McpResponseMode, readOnly: boolean, launch: McpServerLaunch): McpServerSpec {
+function buildServerSpec(profile: string | undefined, toolset: McpToolset, responseMode: McpResponseMode, readOnly: boolean, launch: McpServerLaunch, spotReadOnly = false, futuresReadOnly = false): McpServerSpec {
   return {
     name: serverName(profile),
     command: launch.command,
@@ -125,7 +127,9 @@ function buildServerSpec(profile: string | undefined, toolset: McpToolset, respo
       toolset,
       "--response-mode",
       responseMode,
-      ...(readOnly ? ["--read-only"] : [])
+      ...(readOnly ? ["--read-only"] : []),
+      ...(spotReadOnly ? ["--spot-read-only"] : []),
+      ...(futuresReadOnly ? ["--futures-read-only"] : [])
     ]
   };
 }
@@ -284,12 +288,12 @@ export function runMcpSetup(options: McpSetupOptions, value: McpSetupRuntime = r
   if (options.client === "claude-code" || options.client === "codex" || options.client === "openclaw") {
     process.stdout.write(`Migration note: older "${MCP_BINARY}" registrations are not removed automatically; remove them manually after verifying "${serverName(profile)}".\n`);
   }
-  adapter.install(buildServerSpec(profile, toolset, responseMode, options.readOnly === true, options.launch), value);
+  adapter.install(buildServerSpec(profile, toolset, responseMode, options.readOnly === true, options.launch, options.spotReadOnly, options.futuresReadOnly), value);
 }
 
 export function printMcpSetupUsage(): void {
   process.stdout.write(
-    `Usage: ${MCP_BINARY} setup --client <client> [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>] [--read-only]\n\n` +
+    `Usage: ${MCP_BINARY} setup --client <client> [--profile <name>] [--toolset <default|full>] [--response-mode <compact|compat>] [--read-only] [--spot-read-only] [--futures-read-only]\n\n` +
     `Supported clients:\n` +
     SUPPORTED_MCP_CLIENTS.map((client) => `  ${client.padEnd(16)} ${MCP_CLIENT_NAMES[client]}`).join("\n") +
     "\n"
