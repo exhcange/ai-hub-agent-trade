@@ -49,6 +49,20 @@ test("single-product profiles retain product isolation", async () => {
   await assert.rejects(store.showProfile("only-spot", "futures"), { code: "AI_HUB_PRODUCT_MISMATCH" });
 });
 
+test("the legacy pairing command cannot authorize a unified profile named spot", async () => {
+  const { store } = await fixture();
+  await store.setProfile("spot", "https://8.8.8.8", "spot");
+  await store.setProfile("futures", "https://1.1.1.1", "futures");
+  await store.pairProducts("legacy-proof");
+  assert.equal((await store.showProfile("spot")).accountPairing?.evidenceId, "legacy-proof");
+
+  await store.setUnifiedProfile("spot", "https://8.8.8.8", "https://8.8.4.4");
+  await assert.rejects(store.pairProducts("legacy-proof"), { code: "AI_HUB_PRODUCT_MISMATCH" });
+  assert.equal((await store.showProfile("spot")).accountPairing, undefined);
+  await store.pairProducts("unified-proof", "spot");
+  assert.equal((await store.showProfile("spot")).accountPairing?.evidenceId, "unified-proof");
+});
+
 test("unification preserves legacy durable-state identities without duplicating credentials", async () => {
   const { store, file, directory } = await fixture();
   const profile = (product: "spot" | "futures", url: string) => ({ product, openapi_base_url: url, api_key: credentials.apiKey, secret_key: credentials.secretKey });

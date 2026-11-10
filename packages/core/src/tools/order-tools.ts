@@ -703,7 +703,7 @@ export const orderTools: ToolSpec<any>[] = [
       const order = input as { symbol: string; orderId?: string; newClientOrderId?: string };
       const symbol = await resolveSpotSymbol(context, order.symbol);
       const result = await context.api.getOrder({ ...order, symbol }, signed(context));
-      if (order.newClientOrderId) await context.unresolvedWrites?.resolve(context.profile.name, symbol, order.newClientOrderId);
+      if (order.newClientOrderId) await context.unresolvedWrites?.resolve(context.profile.stateProfileName ?? context.profile.name, symbol, order.newClientOrderId);
       return result;
     },
     normalizeResult: (result) => normalizeOrderWorkingStatus(result)

@@ -220,6 +220,26 @@ test("unresolved spot writes are retained and block a matching new preview", asy
   }
 });
 
+test("a migrated spot profile can reconcile an order blocked under its legacy state identity", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-hub-migrated-unresolved-"));
+  try {
+    const store = new FileUnresolvedWriteStore(directory);
+    const order = { symbol: "btcusdt", newClientOrderId: "fixture-legacy-order" };
+    await store.recordUnknown("tenant-a", "spot_limit_order", order);
+    const migrated: ToolExecutionContext = {
+      ...contextWithSymbolRules,
+      profile: { ...context.profile, name: "merchant", products: ["spot", "futures"], product: "spot", stateProfileName: "tenant-a" },
+      unresolvedWrites: store,
+      api: { ...contextWithSymbolRules.api, getOrder: async () => ({ orderId: "123", newClientOrderId: order.newClientOrderId, status: "FILLED" }) } as unknown as AiHubSpotApi
+    };
+    await assert.rejects(store.assertNoUnresolved("tenant-a", "spot_limit_order", order), { code: "AI_HUB_UNRESOLVED_WRITE_EXISTS" });
+    await createToolRegistry().execute("spot_get_order", order, migrated, { readOnly: true });
+    await store.assertNoUnresolved("tenant-a", "spot_limit_order", order);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("unresolved write state expires after seven days", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ai-hub-unresolved-expiry-"));
   try {

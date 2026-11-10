@@ -256,7 +256,11 @@ export class ConfigStore {
       await this.write(config);
       return { paired: true, source: "operator-verified" };
     }
-    if (validateProduct(this.profileFrom(config, "spot").product) !== "spot" || validateProduct(this.profileFrom(config, "futures").product) !== "futures") throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "Pairing requires spot and futures product profiles.");
+    const spot = this.profileFrom(config, "spot");
+    const futures = this.profileFrom(config, "futures");
+    if (spot.products || futures.products || validateProduct(spot.product) !== "spot" || validateProduct(futures.product) !== "futures") {
+      throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "Legacy pairing requires separate spot and futures profiles. Use --profile to pair a unified profile.");
+    }
     config.account_pairing = { spotVersion: versionOf(config, "spot"), futuresVersion: versionOf(config, "futures"), evidenceId };
     await this.write(config);
     return { paired: true, source: "operator-verified" };
@@ -308,12 +312,16 @@ export class ConfigStore {
     if (requestedProduct && !profile.products && product !== validateProduct(profile.product)) throw new AiHubError("AI_HUB_PRODUCT_MISMATCH", "The selected profile does not support this product.");
     const { pairing: _, ...binding } = profile;
     const paired = profile.pairing?.version === createHash("sha256").update(JSON.stringify(binding)).digest("hex");
+    const legacyPairing = config.account_pairing;
+    const legacyPairValid = legacyPairing && ["spot", "futures"].includes(name)
+      && !config.profiles.spot?.products && !config.profiles.futures?.products
+      && legacyPairing.spotVersion === versionOf(config, "spot") && legacyPairing.futuresVersion === versionOf(config, "futures");
     return {
       name,
       product,
       ...(profile.products ? { products: [...profile.products], ...(profile.state_profile_names ? { stateProfileName: profile.state_profile_names[product] } : {}) } : {}),
       ...(paired && profile.pairing ? { accountPairing: { source: "operator-verified" as const, evidenceId: profile.pairing.evidenceId } } : {}),
-      ...(config.account_pairing && ["spot", "futures"].includes(name) && config.account_pairing.spotVersion === versionOf(config, "spot") && config.account_pairing.futuresVersion === versionOf(config, "futures") ? { accountPairing: { source: "operator-verified" as const, evidenceId: config.account_pairing.evidenceId } } : {}),
+      ...(legacyPairValid ? { accountPairing: { source: "operator-verified" as const, evidenceId: legacyPairing.evidenceId } } : {}),
       openApiBaseUrl: profile.products && product === "futures" ? profile.futures_base_url! : profile.openapi_base_url,
       configVersion: createHash("sha256").update(versionOf(config, name)).update(JSON.stringify(config.account_pairing ?? null)).digest("hex")
     };
